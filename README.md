@@ -14,6 +14,7 @@ Cloud-ready starter for a unified endpoint management platform. This is a protot
 - Authenticated agent heartbeat API with enrollment/heartbeat rate limits
 - Admin-only agent credential revocation with an audit event
 - Inventory/summary automatically treat devices with no heartbeat for five minutes as offline
+- Tenant-oriented database indexes for common inventory and audit queries
 - CI tests via Node's built-in test runner
 
 ## Run in demo mode
@@ -67,7 +68,7 @@ Configure `DATABASE_URL` and the bootstrap administrator secrets in Render's env
 2. PostgreSQL persistence.
 3. Authentication, roles, and tenant-scoped reads (current milestone).
 4. Harden auth with rate limits, password recovery/MFA/SSO, and audited administration.
-5. Device enrollment, authenticated heartbeat, stale-device detection, and agent credential revocation (API prototype).
+5. Device enrollment, authenticated heartbeat, stale-device detection, agent credential revocation, and effective-status filtering (API prototype).
 6. Signed platform-specific agent, secure token storage, rotation, and integration tests against PostgreSQL.
 7. Patch/software management and policy enforcement with approvals.
 8. AI-assisted recommendations with human approval.
