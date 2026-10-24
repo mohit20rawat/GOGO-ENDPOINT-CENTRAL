@@ -54,7 +54,7 @@ jobs:
       - name: Parse all Windows agent scripts
         shell: pwsh
         run: |
-          $scripts = Get-ChildItem -Path agent/windows -Filter *.ps1 -File
+          $scripts = Get-ChildItem -Path agent/windows -Filter *.ps1 -File -Recurse
           if (-not $scripts) {
             throw "No PowerShell scripts found under agent/windows."
           }
