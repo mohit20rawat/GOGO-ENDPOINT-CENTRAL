@@ -12,6 +12,20 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: gogo_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d gogo_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -25,5 +39,8 @@ jobs:
         run: |
           node --check app.js
           node --check public/app.js
-      - name: Run automated tests
+      - name: Run automated tests (including PostgreSQL integration)
+        env:
+          RUN_POSTGRES_INTEGRATION: "1"
+          POSTGRES_TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/gogo_test
         run: npm test
