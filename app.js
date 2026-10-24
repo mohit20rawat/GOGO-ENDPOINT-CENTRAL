@@ -146,7 +146,7 @@ async function initializeDatabase(pool = defaultPool, env = process.env) {
 }
 
 function mapDevice(row) {
-  return { id: row.id, name: row.name, user: row.assigned_user, department: row.department, os: row.os, version: row.os_version, status: row.status, risk: row.risk, lastSeen: row.last_seen };
+  return { id: row.id, name: row.name, user: row.assigned_user, department: row.department, os: row.os, version: row.os_version, status: row.status, risk: row.risk, lastSeen: row.last_seen, agentVersion: row.agent_version || null };
 }
 function mapAuditEvent(row) { return { id: row.id, action: row.action, actor: row.actor, time: row.event_time, result: row.result }; }
 
@@ -399,7 +399,7 @@ function createApp({ pool = defaultPool } = {}) {
           const p = "$" + values.length;
           clauses.push("(id ILIKE " + p + " OR name ILIKE " + p + " OR assigned_user ILIKE " + p + " OR department ILIKE " + p + " OR os ILIKE " + p + ")");
         }
-        const result = await pool.query("SELECT id,name,assigned_user,department,os,os_version,CASE WHEN status='online' AND updated_at < NOW() - INTERVAL '5 minutes' THEN 'offline' ELSE status END AS status,risk,CASE WHEN status='online' AND updated_at < NOW() - INTERVAL '5 minutes' THEN updated_at::text ELSE last_seen END AS last_seen FROM devices WHERE " + clauses.join(" AND ") + " ORDER BY name",values);
+        const result = await pool.query("SELECT id,name,assigned_user,department,os,os_version,agent_version,CASE WHEN status='online' AND updated_at < NOW() - INTERVAL '5 minutes' THEN 'offline' ELSE status END AS status,risk,CASE WHEN status='online' AND updated_at < NOW() - INTERVAL '5 minutes' THEN updated_at::text ELSE last_seen END AS last_seen FROM devices WHERE " + clauses.join(" AND ") + " ORDER BY name",values);
         const items = result.rows.map(mapDevice);
         return res.json({ items,total:items.length,mode:"database" });
       }
