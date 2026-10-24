@@ -13,6 +13,7 @@ Cloud-ready starter for a unified endpoint management platform. This is a protot
 - Database-backed device enrollment API and per-device opaque agent tokens
 - Authenticated agent heartbeat API with enrollment/heartbeat rate limits
 - Persists the reported endpoint agent version during heartbeats for operational inventory checks
+- Experimental Windows PowerShell enrollment/heartbeat script at `agent/windows/GogoEndpointAgent.ps1`; stores its agent token using current-user Windows DPAPI
 - Admin-only agent credential revocation with an audit event
 - Agent-authenticated transactional token rotation; previous token is invalidated and rotation is audited
 - Inventory/summary automatically treat devices with no heartbeat for five minutes as offline
@@ -78,3 +79,18 @@ See [the cloud deployment checklist](docs/deployment.md) for database isolation,
 6. Signed platform-specific agent, secure token storage, replay protection, and managed-PostgreSQL validation (CI now runs lifecycle integration tests against PostgreSQL 16).
 7. Patch/software management and policy enforcement with approvals.
 8. AI-assisted recommendations with human approval.
+
+
+## Experimental Windows agent
+
+The script at `agent/windows/GogoEndpointAgent.ps1` is an early foreground prototype, not a signed installer or Windows service. It enrolls one Windows endpoint using a single-use admin token and sends a heartbeat every 60 seconds. It requires a deployed backend with PostgreSQL configured and an HTTPS URL.
+
+From PowerShell, in the Windows user profile that should own the agent token:
+
+```powershell
+.\GogoEndpointAgent.ps1 -ServerUrl "https://YOUR-GOGO-HOST" -Enroll
+```
+
+Paste the single-use enrollment token when prompted. The returned agent token is encrypted with Windows DPAPI for the current user. Later, start it again from the same user profile with ` .\GogoEndpointAgent.ps1 ` (without the surrounding spaces) to reuse the saved URL and token. Stop the foreground process with Ctrl+C.
+
+This prototype does not install itself as a service, auto-rotate credentials, install patches, execute remote commands, or include a signed package. Test only on a non-production endpoint until it has undergone security review and packaging.
