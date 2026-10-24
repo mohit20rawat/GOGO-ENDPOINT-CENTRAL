@@ -38,6 +38,6 @@ The current Render service may still be configured for the earlier MVP branch. D
 ## Important limitations
 
 - The app is not production-hardened. Obtain a security review before real organizational use.
-- Database TLS configuration must match the chosen provider. The current application database configuration disables certificate verification when SSL is enabled; this should be corrected and tested against the selected provider before handling sensitive data.
+- PostgreSQL TLS certificate verification is enabled by default. Validate the chosen provider's certificate chain and connectivity before handling sensitive data. Do not set `DATABASE_SSL=disable` in production.
 - Backups, restore drills, password reset, MFA/SSO, distributed rate limiting, tenant onboarding, agent packaging/signing, secure OS token storage, and device-management actions remain unfinished.
 - PostgreSQL integration tests run in CI against an isolated disposable database. A successful CI run does not prove a managed provider or Render environment has been configured.
