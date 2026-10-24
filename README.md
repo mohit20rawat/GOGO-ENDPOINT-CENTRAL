@@ -12,6 +12,7 @@ Cloud-ready starter for a unified endpoint management platform. This is a protot
 - Admin-created, single-use enrollment tokens that expire after 24 hours
 - Database-backed device enrollment API and per-device opaque agent tokens
 - Authenticated agent heartbeat API with enrollment/heartbeat rate limits
+- Persists the reported endpoint agent version during heartbeats for operational inventory checks
 - Admin-only agent credential revocation with an audit event
 - Agent-authenticated transactional token rotation; previous token is invalidated and rotation is audited
 - Inventory/summary automatically treat devices with no heartbeat for five minutes as offline
