@@ -80,18 +80,49 @@ $baseUrl = Get-ServerBaseUrl -Candidate $ServerUrl
 if ($Enroll) { Invoke-Enrollment -BaseUrl $baseUrl }
 
 $token = Get-AgentToken
+$retryDelaySeconds = $IntervalSeconds
+$nextRotationUtc = [DateTime]::UtcNow.AddHours(24)
 Write-Host "GOGO Endpoint Central agent $AgentVersion started. Heartbeat interval: $IntervalSeconds seconds."
+Write-Host "Token rotation is scheduled every 24 hours while this process remains running."
 try {
   while ($true) {
     try {
       $headers = @{ Authorization = "Bearer $token" }
       $body = @{ agentVersion = $AgentVersion } | ConvertTo-Json
       $result = Invoke-RestMethod -Method Post -Uri "$baseUrl/api/agent/heartbeat" -Headers $headers -ContentType "application/json" -Body $body -TimeoutSec 20
+      $retryDelaySeconds = $IntervalSeconds
       Write-Host "$(Get-Date -Format o) heartbeat accepted for $($result.deviceId)"
+
+      if ([DateTime]::UtcNow -ge $nextRotationUtc) {
+        # The server invalidates the old token as soon as rotation commits. Persist the
+        # replacement immediately and never print it. If persistence fails, stop rather
+        # than continue with a credential that no longer works.
+        $rotation = Invoke-RestMethod -Method Post -Uri "$baseUrl/api/agent/rotate-token" -Headers $headers -ContentType "application/json" -Body "{}" -TimeoutSec 20
+        if ([string]::IsNullOrWhiteSpace([string]$rotation.agentToken)) {
+          throw "Token rotation response did not include a replacement token."
+        }
+        Save-AgentToken -Token ([string]$rotation.agentToken)
+        $token = [string]$rotation.agentToken
+        $nextRotationUtc = [DateTime]::UtcNow.AddHours(24)
+        Write-Host "$(Get-Date -Format o) agent credential rotated and securely saved."
+        $rotation.agentToken = $null
+      }
+      Start-Sleep -Seconds $IntervalSeconds
     } catch {
+      $statusCode = $null
+      try { $statusCode = [int]$_.Exception.Response.StatusCode } catch {}
+      if ($statusCode -eq 401) {
+        Write-Error "Agent credential was rejected (HTTP 401). Stop and re-enroll this device with a new single-use token."
+        break
+      }
       # Avoid logging authorization headers, response bodies, or token material.
-      Write-Warning "$(Get-Date -Format o) heartbeat failed: $($_.Exception.Message)"
+      Write-Warning "$(Get-Date -Format o) heartbeat/rotation failed; retrying in $retryDelaySeconds seconds."
+      Start-Sleep -Seconds $retryDelaySeconds
+      $retryDelaySeconds = [Math]::Min(900, [Math]::Max($IntervalSeconds, $retryDelaySeconds * 2))
     }
-    Start-Sleep -Seconds $IntervalSeconds
   }
-} finally { $token = $null }
+} finally {
+  $token = $null
+  $headers = $null
+  Write-Host "GOGO Endpoint Central agent stopped."
+}
