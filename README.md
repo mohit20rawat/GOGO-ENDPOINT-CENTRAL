@@ -18,7 +18,7 @@ Cloud-ready starter for a unified endpoint management platform. This is a protot
 - Tenant-oriented database indexes for common inventory and audit queries
 - Atomic, advisory-lock-serialized database initialization with a recorded baseline schema version
 - Database readiness checks required tables and the applied baseline migration, not just network connectivity
-- Integration coverage for concurrent startup, role permissions, and tenant isolation
+- Integration coverage for concurrent startup, schema-aware readiness, role permissions, tenant isolation, and non-enumerating login failures
 - Unit/API tests plus PostgreSQL-backed enrollment, heartbeat, token-rotation, revocation, and audit integration tests in CI
 
 ## Run in demo mode
