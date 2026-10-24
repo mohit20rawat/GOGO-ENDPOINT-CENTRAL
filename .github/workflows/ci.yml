@@ -21,5 +21,9 @@ jobs:
           node-version: 20
       - name: Install dependencies
         run: npm install
+      - name: Check server and browser JavaScript syntax
+        run: |
+          node --check app.js
+          node --check public/app.js
       - name: Run automated tests
         run: npm test
