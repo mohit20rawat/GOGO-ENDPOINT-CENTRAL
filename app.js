@@ -1,7 +1,9 @@
 const express = require("express");
 const path = require("node:path");
 const crypto = require("node:crypto");
-const bcrypt = require("bcryptjs");\nconst helmet = require("helmet");\nconst { rateLimit } = require("express-rate-limit");
+const bcrypt = require("bcryptjs");
+const helmet = require("helmet");
+const { rateLimit } = require("express-rate-limit");
 
 const demoDevices = [
   { id: "DEV-1001", name: "FIN-LAP-014", user: "Aarav Sharma", department: "Finance", os: "Windows 11", version: "23H2", status: "online", risk: "low", lastSeen: "Just now" },
@@ -59,7 +61,8 @@ async function initializeDatabase(pool = defaultPool, env = process.env) {
     id TEXT PRIMARY KEY, action TEXT NOT NULL, actor TEXT NOT NULL,
     event_time TEXT NOT NULL, result TEXT NOT NULL CHECK (result IN ('success','failure'))
   )`);
-  await pool.query("ALTER TABLE audit_events ADD COLUMN IF NOT EXISTS tenant_id TEXT");\n  await pool.query("CREATE UNIQUE INDEX IF NOT EXISTS users_email_global_unique ON users (LOWER(email))");
+  await pool.query("ALTER TABLE audit_events ADD COLUMN IF NOT EXISTS tenant_id TEXT");
+  await pool.query("CREATE UNIQUE INDEX IF NOT EXISTS users_email_global_unique ON users (LOWER(email))");
 
   const tenantName = (env.BOOTSTRAP_TENANT_NAME || "GOGO Workspace").trim().slice(0, 100);
   const tenantId = "primary-tenant";
@@ -104,7 +107,8 @@ function mapAuditEvent(row) { return { id: row.id, action: row.action, actor: ro
 
 function createApp({ pool = defaultPool } = {}) {
   const app = express();
-  app.disable("x-powered-by");\n  app.use(helmet());
+  app.disable("x-powered-by");
+  app.use(helmet());
   app.use(express.json({ limit: "100kb" }));
   app.use(express.static(path.join(__dirname, "public")));
 
@@ -136,7 +140,8 @@ function createApp({ pool = defaultPool } = {}) {
     catch (_error) { return res.status(503).json({ ready:false, mode:"database", persistence:"postgresql", authRequired:true }); }
   });
 
-  const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: "draft-7", legacyHeaders: false, message: { error: "Too many sign-in attempts. Try again later." } });\n  app.post("/api/auth/login", loginLimiter, async (req,res,next) => {
+  const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: "draft-7", legacyHeaders: false, message: { error: "Too many sign-in attempts. Try again later." } });
+  app.post("/api/auth/login", loginLimiter, async (req,res,next) => {
     if (!pool) return res.status(503).json({ error:"Login is available only when PostgreSQL is configured. Demo mode uses sample data." });
     const email = typeof req.body.email === "string" ? req.body.email.trim().toLowerCase() : "";
     const password = typeof req.body.password === "string" ? req.body.password : "";
