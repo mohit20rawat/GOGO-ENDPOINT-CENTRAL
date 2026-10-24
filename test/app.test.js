@@ -2,8 +2,8 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { createApp } = require("../app");
 
-async function withServer(run) {
-  const server = createApp({ pool: null }).listen(0, "127.0.0.1");
+async function withServer(run, pool = null) {
+  const server = createApp({ pool }).listen(0, "127.0.0.1");
   try {
     await new Promise((resolve, reject) => {
       server.once("listening", resolve);
@@ -42,6 +42,38 @@ test("readiness endpoint explicitly identifies demo persistence and auth mode", 
   const response = await fetch(base + "/api/ready");
   assert.deepEqual(await response.json(),{ready:true,mode:"demo",persistence:"in-memory",authRequired:false});
 }));
+test("database readiness requires the baseline schema and all required tables", async () => {
+  const pool = { query: async () => ({ rows: [{ baseline_applied: true, required_tables_present: true }] }) };
+  await withServer(async base => {
+    const response = await fetch(base + "/api/ready");
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {
+      ready: true, mode: "database", persistence: "postgresql",
+      authRequired: true, schemaVersion: "001_initial_schema"
+    });
+  }, pool);
+});
+
+test("database readiness returns 503 when schema is incomplete", async () => {
+  const pool = { query: async () => ({ rows: [{ baseline_applied: true, required_tables_present: false }] }) };
+  await withServer(async base => {
+    const response = await fetch(base + "/api/ready");
+    assert.equal(response.status, 503);
+    assert.equal((await response.json()).ready, false);
+  }, pool);
+});
+
+test("database readiness returns 503 when the database query fails", async () => {
+  const pool = { query: async () => { throw new Error("database unavailable"); } };
+  await withServer(async base => {
+    const response = await fetch(base + "/api/ready");
+    assert.equal(response.status, 503);
+    assert.deepEqual(await response.json(), {
+      ready: false, mode: "database", persistence: "postgresql", authRequired: true
+    });
+  }, pool);
+});
+
 test("demo auth API does not pretend to authenticate without a database", async () => withServer(async base => {
   const response = await fetch(base + "/api/auth/login",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({email:"admin@example.com",password:"a-secure-password"})});
   assert.equal(response.status,503);
