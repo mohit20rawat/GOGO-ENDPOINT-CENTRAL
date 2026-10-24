@@ -2,7 +2,11 @@
 
 This is an initial implementation, not yet production-ready. Build and integration tests are required on Windows before use on managed endpoints.
 
-## Build
+## Build and CI package
+
+The GitHub Actions `CI` workflow builds a framework-dependent Windows x64 package and uploads it as `GogoEndpointCentral-Windows-x64-experimental` for 7 days. Download it from the successful workflow run's **Artifacts** section. It is an unsigned test package, not an installer or production release. The target machine must have the .NET 8 runtime installed.
+
+To build locally:
 
     dotnet publish .\agent\windows\service\GogoEndpointCentral.Service.csproj -c Release -r win-x64 --self-contained false -o .\agent\windows\service\publish
 
@@ -28,6 +32,6 @@ Enrollment state is preserved by default. For intentional local offboarding, pas
 - Initial Windows service host using .NET 8; target OS support still needs verification.
 - Service SID ACL behavior and installer command-line quoting still require verification on a real Windows host. Review the resulting ACL before production.
 - Reports agent version 0.2.0; telemetry is limited to heartbeat/version.
-- No MSI, code signing, automatic updates, patch management, remote command execution, or production security certification.
+- CI artifact is an unsigned, framework-dependent test ZIP, not an MSI or production release. No code signing, automatic updates, patch management, remote command execution, or production security certification.
 - Token rotation failure after server commit requires re-enrollment. Do not retry with the old credential.
 - Not yet validated against a live backend or real Windows endpoint.
