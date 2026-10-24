@@ -254,6 +254,29 @@ function createApp({ pool = defaultPool } = {}) {
     } finally { if (client) client.release(); }
   });
 
+  app.post("/api/admin/devices/:deviceId/revoke-agent", requireAuth, requireRole("admin"), async (req,res,next) => {
+    if (!pool) return res.status(503).json({ error:"Agent credential management requires PostgreSQL." });
+    const deviceId = typeof req.params.deviceId === "string" ? req.params.deviceId.slice(0,120) : "";
+    let client;
+    try {
+      client = await pool.connect();
+      await client.query("BEGIN");
+      const device = await client.query("SELECT id,name FROM devices WHERE id=$1 AND tenant_id=$2 FOR UPDATE", [deviceId,req.user.tenantId]);
+      if (!device.rowCount) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({ error:"Device not found in your workspace." });
+      }
+      const revoked = await client.query("DELETE FROM device_agent_tokens WHERE device_id=$1 AND tenant_id=$2 RETURNING token_hash", [deviceId,req.user.tenantId]);
+      await client.query("UPDATE devices SET status='offline',updated_at=NOW() WHERE id=$1 AND tenant_id=$2", [deviceId,req.user.tenantId]);
+      await client.query("INSERT INTO audit_events (id,action,actor,event_time,result,tenant_id) VALUES ($1,$2,$3,$4,$5,$6)",
+        ["AUD_" + crypto.randomUUID(),"Agent credentials revoked for device: " + device.rows[0].name,req.user.email,new Date().toISOString(),"success",req.user.tenantId]);
+      await client.query("COMMIT");
+      return res.json({ ok:true, deviceId, revoked:revoked.rowCount > 0, note:"The device must be enrolled again before it can send heartbeats." });
+    } catch (error) {
+      if (client) { try { await client.query("ROLLBACK"); } catch (_rollbackError) {} }
+      return next(error);
+    } finally { if (client) client.release(); }
+  });
   app.post("/api/agent/heartbeat", heartbeatLimiter, async (req,res,next) => {
     if (!pool) return res.status(503).json({ error:"Agent heartbeat requires PostgreSQL." });
     const header = req.get("authorization") || "";
@@ -274,7 +297,7 @@ function createApp({ pool = defaultPool } = {}) {
   app.get("/api/summary", requireAuth, async (req,res,next) => {
     try {
       const rows = pool
-        ? (await pool.query("SELECT status,risk,COUNT(*)::int AS count FROM devices WHERE tenant_id=$1 GROUP BY status,risk", [req.user.tenantId])).rows
+        ? (await pool.query("SELECT CASE WHEN status='online' AND updated_at < NOW() - INTERVAL '5 minutes' THEN 'offline' ELSE status END AS status,risk,COUNT(*)::int AS count FROM devices WHERE tenant_id=$1 GROUP BY 1,risk", [req.user.tenantId])).rows
         : demoDevices;
       const totalDevices = rows.reduce((sum,row) => sum + (pool ? row.count : 1),0);
       const count = (predicate) => rows.filter(predicate).reduce((sum,row) => sum + (pool ? row.count : 1),0);
@@ -296,7 +319,7 @@ function createApp({ pool = defaultPool } = {}) {
           const p = "$" + values.length;
           clauses.push("(id ILIKE " + p + " OR name ILIKE " + p + " OR assigned_user ILIKE " + p + " OR department ILIKE " + p + " OR os ILIKE " + p + ")");
         }
-        const result = await pool.query("SELECT id,name,assigned_user,department,os,os_version,status,risk,last_seen FROM devices WHERE " + clauses.join(" AND ") + " ORDER BY name",values);
+        const result = await pool.query("SELECT id,name,assigned_user,department,os,os_version,CASE WHEN status='online' AND updated_at < NOW() - INTERVAL '5 minutes' THEN 'offline' ELSE status END AS status,risk,CASE WHEN status='online' AND updated_at < NOW() - INTERVAL '5 minutes' THEN updated_at::text ELSE last_seen END AS last_seen FROM devices WHERE " + clauses.join(" AND ") + " ORDER BY name",values);
         const items = result.rows.map(mapDevice);
         return res.json({ items,total:items.length,mode:"database" });
       }
