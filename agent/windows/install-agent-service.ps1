@@ -11,7 +11,7 @@ New-Item -ItemType Directory -Path $stateDirectory -Force | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "Failed to secure state directory ACLs." }
 if (-not (Get-Service -Name $serviceName -ErrorAction SilentlyContinue)) {
   $binPath = '"' + (Resolve-Path -LiteralPath $exePath).Path + '"'
-  & sc.exe create $serviceName "binPath= $binPath" "start= demand" "obj= NT AUTHORITY\LocalService" "DisplayName= GOGO Endpoint Central Agent"
+  & sc.exe create $serviceName "binPath= $binPath" "start= demand" "obj= ""NT AUTHORITY\LocalService""" "DisplayName= GOGO Endpoint Central Agent"
   if ($LASTEXITCODE -ne 0) { throw "Failed to create service." }
 }
 & sc.exe sidtype $serviceName unrestricted
