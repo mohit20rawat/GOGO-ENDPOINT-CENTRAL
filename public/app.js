@@ -26,7 +26,7 @@ function renderDevices(items) {
   $("deviceCount").textContent = items.length + (items.length === 1 ? " device" : " devices");
   $("resultsText").textContent = "Showing " + items.length + " " + (items.length === 1 ? "device" : "devices");
   if (!items.length) {
-    rows.innerHTML = '<tr><td colspan="5" class="empty-state">No devices match your search.</td></tr>';
+    rows.innerHTML = '<tr><td colspan="7" class="empty-state">No devices match your search.</td></tr>';
     return;
   }
   rows.innerHTML = items.map((device) => {
@@ -35,9 +35,18 @@ function renderDevices(items) {
     return '<tr><td><div class="device-name"><span class="device-glyph">▣</span><div><strong>' + escapeHtml(device.name) + '</strong><small>' + escapeHtml(device.id) + '</small></div></div></td>' +
       '<td><span class="user-name">' + escapeHtml(device.user) + '</span><br><small>' + escapeHtml(device.department) + '</small></td>' +
       '<td>' + escapeHtml(device.os) + '<br><small>' + escapeHtml(device.version) + '</small></td>' +
+      '<td>' + (device.agentVersion ? '<span class="agent-version">' + escapeHtml(device.agentVersion) + '</span>' : '<span class="muted-value">Not reported</span>') + '</td>' +
+      '<td><span class="heartbeat-time">' + escapeHtml(formatLastSeen(device.lastSeen)) + '</span></td>' +
       '<td><span class="pill ' + status + '">' + status + '</span></td>' +
       '<td><span class="pill ' + risk + '">' + risk + '</span></td></tr>';
   }).join("");
+}
+
+function formatLastSeen(value) {
+  if (!value) return "Never";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Unknown";
+  return date.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 }
 
 function escapeHtml(value) {
@@ -74,7 +83,7 @@ async function loadDashboard(showMessage) {
     if (showMessage) showToast("Workspace data refreshed");
   } catch (error) {
     showToast("Could not load dashboard. Check the server and retry.");
-    $("deviceRows").innerHTML = '<tr><td colspan="5" class="empty-state">Dashboard data is unavailable.</td></tr>';
+    $("deviceRows").innerHTML = '<tr><td colspan="7" class="empty-state">Dashboard data is unavailable.</td></tr>';
   }
 }
 
