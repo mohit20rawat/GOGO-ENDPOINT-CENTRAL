@@ -15,7 +15,7 @@ Open an elevated PowerShell session. The backend must be deployed with a dedicat
     Start-Service -Name GogoEndpointCentralAgent
     Get-Service -Name GogoEndpointCentralAgent
 
-Enrollment prompts for an HTTPS server URL and single-use token, with token input masked. The service uses machine-scope DPAPI for its token, alongside NTFS ACLs. The installer creates the service with demand start so enrollment can finish before service start. After enrollment, run `.\agent\windows\test-agent-service.ps1` from an elevated PowerShell session to check service registration, configuration, token-file presence, backend readiness, and state-directory ACL scope. Use `-SkipRemoteCheck` to run only local checks. The diagnostic is read-only and does not prove a heartbeat was accepted.
+Enrollment prompts for an HTTPS server URL and single-use token, with token input masked. The service uses machine-scope DPAPI for its token, alongside NTFS ACLs. The installer creates the service with demand start so enrollment can finish before service start. After enrollment, run `.\agent\windows\test-agent-service.ps1` from an elevated PowerShell session to check service registration, configuration, encrypted token decryption (when the published executable is present), backend readiness, and state-directory ACL scope. Use `-SkipRemoteCheck` to skip the HTTP readiness request. The diagnostic is read-only and does not prove a heartbeat was accepted. The executable also supports `--check-state`, which validates the HTTPS config and decrypts the machine-scope DPAPI token without printing it.
 
 ## Uninstall
 
