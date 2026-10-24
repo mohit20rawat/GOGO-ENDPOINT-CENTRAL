@@ -24,7 +24,7 @@ if (process.env.DATABASE_URL) {
   const { Pool } = require("pg");
   defaultPool = new Pool({
     connectionString: process.env.DATABASE_URL,
-    ssl: process.env.DATABASE_SSL === "disable" ? false : { rejectUnauthorized: false },
+    ssl: process.env.DATABASE_SSL === "disable" ? false : { rejectUnauthorized: true },
     max: 5,
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 5000
