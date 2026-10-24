@@ -14,6 +14,7 @@ Cloud-ready starter for a unified endpoint management platform. This is a protot
 - Authenticated agent heartbeat API with enrollment/heartbeat rate limits
 - Persists the reported endpoint agent version during heartbeats for operational inventory checks
 - Experimental Windows PowerShell enrollment/heartbeat script at `agent/windows/GogoEndpointAgent.ps1`; stores its agent token using current-user Windows DPAPI
+- Device inventory API and dashboard expose the reported agent version and last heartbeat time
 - Admin-only agent credential revocation with an audit event
 - Agent-authenticated transactional token rotation; previous token is invalidated and rotation is audited
 - Inventory/summary automatically treat devices with no heartbeat for five minutes as offline
