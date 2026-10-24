@@ -1,6 +1,8 @@
 const $ = (id) => document.getElementById(id);
 let currentDevices = [];
-let toastTimer;\nlet accessToken = "";\nlet authRequired = false;
+let toastTimer;
+let accessToken = "";
+let authRequired = false;
 
 function showToast(message) {
   const toast = $("toast");
@@ -11,7 +13,10 @@ function showToast(message) {
 }
 
 async function getJson(url) {
-  const headers = { Accept: "application/json" };\n  if (accessToken) headers.Authorization = "Bearer " + accessToken;\n  const response = await fetch(url, { headers });\n  if (response.status === 401 && authRequired) showAuthGate("Your session expired. Please sign in again.");
+  const headers = { Accept: "application/json" };
+  if (accessToken) headers.Authorization = "Bearer " + accessToken;
+  const response = await fetch(url, { headers });
+  if (response.status === 401 && authRequired) showAuthGate("Your session expired. Please sign in again.");
   if (!response.ok) throw new Error("Request failed (" + response.status + ")");
   return response.json();
 }
@@ -96,7 +101,8 @@ $("exportButton").addEventListener("click", () => {
     const text = [device.id, device.name, device.user, device.department, device.os].join(" ").toLowerCase();
     return statusMatches && (!query || text.includes(query));
   }).forEach((device) => rows.push([device.id, device.name, device.user, device.department, device.os, device.version, device.status, device.risk]));
-  const csv = rows.map((row) => row.map((value) => '"' + String(value).replace(/"/g, '""') + '"').join(",")).join("\r\n");
+  const csv = rows.map((row) => row.map((value) => '"' + String(value).replace(/"/g, '""') + '"').join(",")).join("\r
+");
   const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
   const link = document.createElement("a");
   link.href = url;
