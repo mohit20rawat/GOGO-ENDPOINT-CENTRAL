@@ -60,6 +60,25 @@ These endpoints require PostgreSQL and are not enabled in demo mode.
 
 This is API groundwork only. A signed, packaged agent, platform-specific secure token storage, replay protection, device uninstall/offboarding, and integration tests against a production-like managed PostgreSQL service are still recommended; CI now exercises the lifecycle against a disposable PostgreSQL 16 service. Do not deploy agents to production devices yet.
 
+
+### Windows per-user auto-start helper (interim)
+
+After enrolling the endpoint once and stopping the foreground agent with Ctrl+C, install a logon task from the same Windows user profile:
+
+```powershell
+.\GogoEndpointAgent.ps1 -ServerUrl "https://YOUR-GOGO-HOST" -Enroll
+# After enrollment succeeds, stop the foreground loop with Ctrl+C.
+.\install-agent.ps1
+```
+
+The installer registers and starts a Scheduled Task under the current user's interactive logon identity. It restarts the agent at future logons and configures limited retries if the task exits. Remove the task with:
+
+```powershell
+.\uninstall-agent.ps1
+```
+
+Uninstalling the task does not delete the saved token or server URL. Device credential revocation/offboarding must be handled separately. This is an interim user-session auto-start mechanism, **not a Windows Service**: it cannot report while the user is logged off, and it has not been validated on a real Windows endpoint in this repository workflow. Run only in a test environment.
+
 ## Security boundaries
 - Database mode requires bearer authentication for inventory, summary, audit, and user administration.
 - Session tokens are random, expire after eight hours, and only their SHA-256 hashes are stored.
