@@ -16,7 +16,7 @@ Cloud-ready starter for a unified endpoint management platform. This is a protot
 - Agent-authenticated transactional token rotation; previous token is invalidated and rotation is audited
 - Inventory/summary automatically treat devices with no heartbeat for five minutes as offline
 - Tenant-oriented database indexes for common inventory and audit queries
-- CI tests via Node's built-in test runner
+- Unit/API tests plus PostgreSQL-backed enrollment, heartbeat, token-rotation, revocation, and audit integration tests in CI
 
 ## Run in demo mode
 Requires Node.js 20+.
@@ -52,7 +52,7 @@ These endpoints require PostgreSQL and are not enabled in demo mode.
 - To rotate its credential, the authenticated agent sends `POST /api/agent/rotate-token` with its current bearer token. The response contains the replacement `agentToken` once; the old token is invalid immediately after the transaction commits. Persist the replacement securely before continuing normal heartbeats.
 - Enrollment tokens expire after 24 hours. Admins can revoke a device's agent credential with `POST /api/admin/devices/:deviceId/revoke-agent`; the device is marked offline and the action is audited. Re-enrollment is required afterward.
 
-This is API groundwork only. A signed, packaged agent, platform-specific secure token storage, replay protection, device uninstall/offboarding, and integration tests against a real PostgreSQL instance are still required. Do not deploy agents to production devices yet.
+This is API groundwork only. A signed, packaged agent, platform-specific secure token storage, replay protection, device uninstall/offboarding, and integration tests against a production-like managed PostgreSQL service are still recommended; CI now exercises the lifecycle against a disposable PostgreSQL 16 service. Do not deploy agents to production devices yet.
 
 ## Security boundaries
 - Database mode requires bearer authentication for inventory, summary, audit, and user administration.
@@ -71,6 +71,6 @@ Configure `DATABASE_URL` and the bootstrap administrator secrets in Render's env
 3. Authentication, roles, and tenant-scoped reads (current milestone).
 4. Harden auth with rate limits, password recovery/MFA/SSO, and audited administration.
 5. Device enrollment, authenticated heartbeat, stale-device detection, agent credential revocation, and effective-status filtering (API prototype).
-6. Signed platform-specific agent, secure token storage, replay protection, and integration tests against PostgreSQL (token rotation API now exists).
+6. Signed platform-specific agent, secure token storage, replay protection, and managed-PostgreSQL validation (CI now runs lifecycle integration tests against PostgreSQL 16).
 7. Patch/software management and policy enforcement with approvals.
 8. AI-assisted recommendations with human approval.
