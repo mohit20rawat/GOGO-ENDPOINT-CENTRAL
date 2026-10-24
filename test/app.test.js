@@ -63,3 +63,9 @@ test("agent heartbeat is disabled without PostgreSQL", async () => withServer(as
   });
   assert.equal(response.status,503);
 }));
+
+test("agent credential revocation is disabled without PostgreSQL", async () => withServer(async base => {
+  const response = await fetch(base + "/api/admin/devices/dev_example/revoke-agent", { method:"POST" });
+  assert.equal(response.status,503);
+  assert.match((await response.json()).error,/requires PostgreSQL/);
+}));
