@@ -9,6 +9,20 @@
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
+  <section id="authGate" class="auth-gate" hidden aria-labelledby="authTitle">
+    <form id="loginForm" class="auth-card">
+      <div class="brand auth-brand"><span class="brand-mark">G</span><div><strong>GOGO</strong><small>ENDPOINT CENTRAL</small></div></div>
+      <p class="eyebrow">SECURE WORKSPACE</p>
+      <h1 id="authTitle">Sign in</h1>
+      <p class="subheading">Use your workspace administrator account to continue.</p>
+      <label for="loginEmail">Email address</label>
+      <input id="loginEmail" name="email" type="email" autocomplete="username" required maxlength="254">
+      <label for="loginPassword">Password</label>
+      <input id="loginPassword" name="password" type="password" autocomplete="current-password" required maxlength="1024">
+      <button id="loginButton" class="button button-primary" type="submit">Sign in securely</button>
+      <p id="authMessage" class="auth-message" role="status" aria-live="polite">Checking workspace…</p>
+    </form>
+  </section>
   <div class="app-shell">
     <aside class="sidebar">
       <div class="brand"><span class="brand-mark">G</span><div><strong>GOGO</strong><small>ENDPOINT CENTRAL</small></div></div>
