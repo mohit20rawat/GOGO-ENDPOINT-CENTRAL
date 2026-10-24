@@ -56,6 +56,14 @@ test("agent enrollment is disabled without PostgreSQL", async () => withServer(a
   });
   assert.equal(response.status,503);
 }));
+test("agent token rotation is disabled without PostgreSQL", async () => withServer(async base => {
+  const response = await fetch(base + "/api/agent/rotate-token", {
+    method:"POST", headers:{"authorization":"Bearer example-agent-token"}
+  });
+  assert.equal(response.status,503);
+  assert.match((await response.json()).error,/requires PostgreSQL/);
+}));
+
 test("agent heartbeat is disabled without PostgreSQL", async () => withServer(async base => {
   const response = await fetch(base + "/api/agent/heartbeat", {
     method:"POST", headers:{"content-type":"application/json","authorization":"Bearer example-agent-token"},
