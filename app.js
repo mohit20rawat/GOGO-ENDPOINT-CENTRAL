@@ -63,6 +63,18 @@ async function initializeDatabase(pool = defaultPool, env = process.env) {
   )`);
   await pool.query("ALTER TABLE audit_events ADD COLUMN IF NOT EXISTS tenant_id TEXT");
   await pool.query("CREATE UNIQUE INDEX IF NOT EXISTS users_email_global_unique ON users (LOWER(email))");
+  await pool.query(`CREATE TABLE IF NOT EXISTS enrollment_tokens (
+    token_hash TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    created_by TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    expires_at TIMESTAMPTZ NOT NULL, uses_remaining INTEGER NOT NULL DEFAULT 1 CHECK (uses_remaining >= 0),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`);
+  await pool.query(`CREATE TABLE IF NOT EXISTS device_agent_tokens (
+    token_hash TEXT PRIMARY KEY, device_id TEXT NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), last_used_at TIMESTAMPTZ
+  )`);
+
 
   const tenantName = (env.BOOTSTRAP_TENANT_NAME || "GOGO Workspace").trim().slice(0, 100);
   const tenantId = "primary-tenant";
@@ -185,6 +197,78 @@ function createApp({ pool = defaultPool } = {}) {
       if (error.code === "23505") return res.status(409).json({ error:"A user with this email already exists in your tenant." });
       return next(error);
     }
+  });
+
+  const enrollmentLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: "draft-7", legacyHeaders: false, message: { error: "Too many enrollment attempts. Try again later." } });
+  const heartbeatLimiter = rateLimit({ windowMs: 60 * 1000, limit: 120, standardHeaders: "draft-7", legacyHeaders: false });
+  app.post("/api/admin/enrollment-tokens", requireAuth, requireRole("admin"), async (req,res,next) => {
+    if (!pool) return res.status(503).json({ error:"Device enrollment requires PostgreSQL." });
+    const token = crypto.randomBytes(32).toString("base64url");
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    try {
+      await pool.query("INSERT INTO enrollment_tokens (token_hash,tenant_id,created_by,expires_at,uses_remaining) VALUES ($1,$2,$3,$4,1)",
+        [hashToken(token),req.user.tenantId,req.user.id,expiresAt]);
+      return res.status(201).json({ token, expiresAt:expiresAt.toISOString(), uses:1, note:"Store this token securely. It is shown only once and expires in 24 hours." });
+    } catch (error) { return next(error); }
+  });
+
+  app.post("/api/agent/enroll", enrollmentLimiter, async (req,res,next) => {
+    if (!pool) return res.status(503).json({ error:"Device enrollment requires PostgreSQL." });
+    const enrollmentToken = typeof req.body.enrollmentToken === "string" ? req.body.enrollmentToken : "";
+    const name = typeof req.body.name === "string" ? req.body.name.trim() : "";
+    const os = typeof req.body.os === "string" ? req.body.os.trim() : "";
+    const osVersion = typeof req.body.osVersion === "string" ? req.body.osVersion.trim() : "";
+    if (enrollmentToken.length < 20 || enrollmentToken.length > 200 ||
+        !name || name.length > 120 || !os || os.length > 80 || !osVersion || osVersion.length > 80) {
+      return res.status(400).json({ error:"Provide a valid enrollment token, device name, OS, and OS version." });
+    }
+    let client;
+    try {
+      client = await pool.connect();
+      await client.query("BEGIN");
+      const claimed = await client.query(
+        "UPDATE enrollment_tokens SET uses_remaining=uses_remaining-1 WHERE token_hash=$1 AND expires_at>NOW() AND uses_remaining>0 RETURNING tenant_id",
+        [hashToken(enrollmentToken)]
+      );
+      if (!claimed.rowCount) {
+        await client.query("ROLLBACK");
+        return res.status(401).json({ error:"Enrollment token is invalid, expired, or already used." });
+      }
+      const tenantId = claimed.rows[0].tenant_id;
+      const deviceId = "dev_" + crypto.randomUUID();
+      const agentToken = crypto.randomBytes(32).toString("base64url");
+      const now = new Date().toISOString();
+      await client.query(
+        "INSERT INTO devices (id,name,assigned_user,department,os,os_version,status,risk,last_seen,tenant_id) VALUES ($1,$2,$3,$4,$5,$6,'offline','medium',$7,$8)",
+        [deviceId,name,"Unassigned","Unassigned",os,osVersion,"Never",tenantId]
+      );
+      await client.query("INSERT INTO device_agent_tokens (token_hash,device_id,tenant_id) VALUES ($1,$2,$3)",
+        [hashToken(agentToken),deviceId,tenantId]);
+      await client.query("INSERT INTO audit_events (id,action,actor,event_time,result,tenant_id) VALUES ($1,$2,$3,$4,$5,$6)",
+        ["AUD_" + crypto.randomUUID(),"Device enrolled: " + name,deviceId,now,"success",tenantId]);
+      await client.query("COMMIT");
+      return res.status(201).json({ deviceId, agentToken, heartbeatEndpoint:"/api/agent/heartbeat", note:"Store the agent token securely. It is shown only once." });
+    } catch (error) {
+      if (client) { try { await client.query("ROLLBACK"); } catch (_rollbackError) {} }
+      return next(error);
+    } finally { if (client) client.release(); }
+  });
+
+  app.post("/api/agent/heartbeat", heartbeatLimiter, async (req,res,next) => {
+    if (!pool) return res.status(503).json({ error:"Agent heartbeat requires PostgreSQL." });
+    const header = req.get("authorization") || "";
+    const token = header.startsWith("Bearer ") ? header.slice(7) : "";
+    if (!token || token.length > 200) return res.status(401).json({ error:"Agent authentication required." });
+    const agentVersion = typeof req.body.agentVersion === "string" ? req.body.agentVersion.slice(0,40) : null;
+    try {
+      const result = await pool.query(
+        "UPDATE devices d SET status='online',last_seen=NOW()::text,updated_at=NOW() FROM device_agent_tokens t WHERE t.token_hash=$1 AND t.device_id=d.id AND t.tenant_id=d.tenant_id RETURNING d.id,d.tenant_id",
+        [hashToken(token)]
+      );
+      if (!result.rowCount) return res.status(401).json({ error:"Agent token is invalid." });
+      await pool.query("UPDATE device_agent_tokens SET last_used_at=NOW() WHERE token_hash=$1",[hashToken(token)]);
+      return res.json({ ok:true, deviceId:result.rows[0].id, receivedAt:new Date().toISOString(), agentVersion });
+    } catch (error) { return next(error); }
   });
 
   app.get("/api/summary", requireAuth, async (req,res,next) => {
