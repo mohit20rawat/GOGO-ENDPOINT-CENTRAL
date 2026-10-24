@@ -35,7 +35,7 @@ Set these in your hosting provider's secret/environment settings, never in sourc
 - `BOOTSTRAP_ADMIN_EMAIL`: initial administrator email
 - `BOOTSTRAP_ADMIN_PASSWORD`: initial administrator password (minimum 12 characters)
 - `BOOTSTRAP_TENANT_NAME`: optional workspace name
-- `DATABASE_SSL=disable`: disables TLS and should only be used for a trusted local database; omit in production. Note: current app code disables certificate verification when SSL is enabled, so fix and test TLS verification before handling sensitive data.
+- `DATABASE_SSL=disable`: disables TLS and should only be used for a trusted local database; omit in production. PostgreSQL TLS certificate verification is enabled by default. Do not set this to `disable` in production; validate the provider's certificate chain before connecting real data.
 
 On startup, tables are created if missing. Existing device/audit rows are assigned to the initial `primary` tenant during the first migration. The bootstrap admin is created only if that email is not already present in the tenant. Changing the bootstrap password environment variable does not reset an existing account's password.
 
