@@ -3,6 +3,7 @@ using System.Security.Principal;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Net.Http.Json;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
@@ -71,6 +72,11 @@ internal sealed class AgentWorker(ILogger<AgentWorker> logger) : BackgroundServi
                     logger.LogCritical("Agent credential was rejected. Stop the service and re-enroll this device.");
                     return;
                 }
+                catch (TokenPersistenceException)
+                {
+                    logger.LogCritical("Server-side token rotation committed but local persistence failed. Re-enrollment is required.");
+                    return;
+                }
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
                 {
                     break;
@@ -131,7 +137,7 @@ internal sealed class AgentWorker(ILogger<AgentWorker> logger) : BackgroundServi
         catch
         {
             logger.LogCritical("Server rotated the credential but local persistence failed. Re-enrollment is required.");
-            throw new InvalidOperationException("Token persistence failed after server-side rotation.");
+            throw new TokenPersistenceException();
         }
         _token = payload.AgentToken;
         _rotateAfter = DateTimeOffset.UtcNow.Add(RotationInterval);
@@ -253,3 +259,5 @@ internal static class Enrollment
         [property: JsonPropertyName("deviceId")] string? DeviceId,
         [property: JsonPropertyName("agentToken")] string? AgentToken);
 }
+
+internal sealed class TokenPersistenceException : Exception { }
