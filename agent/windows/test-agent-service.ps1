@@ -23,6 +23,21 @@ Write-Check "ProgramData state directory" (Test-Path -LiteralPath $stateDirector
 Write-Check "Service config" (Test-Path -LiteralPath $configPath -PathType Leaf) $(if (Test-Path -LiteralPath $configPath -PathType Leaf) { "exists; contents not printed" } else { "missing; enroll the service first" })
 Write-Check "Encrypted agent token" (Test-Path -LiteralPath $tokenPath -PathType Leaf) $(if (Test-Path -LiteralPath $tokenPath -PathType Leaf) { "encrypted token file exists; contents hidden" } else { "missing; enroll the service first" })
 
+$serviceExe = Join-Path $PSScriptRoot "service\publish\GogoEndpointCentral.Service.exe"
+if (Test-Path -LiteralPath $serviceExe -PathType Leaf) {
+  try {
+    $stateOutput = & $serviceExe --check-state 2>&1
+    $stateExitCode = $LASTEXITCODE
+    $stateDetail = ($stateOutput | ForEach-Object { [string]$_ }) -join " "
+    if ($stateDetail -match "(?i)agent.?token|credential|secret") { $stateDetail = "state validation returned a credential-related diagnostic; details hidden" }
+    Write-Check "Config and DPAPI token" ($stateExitCode -eq 0) $(if ($stateExitCode -eq 0) { "config parsed and encrypted token decrypted successfully" } else { "state validation failed; check enrollment and ACLs" })
+  } catch {
+    Write-Check "Config and DPAPI token" $false "could not run service executable state validation"
+  }
+} else {
+  Write-Host "[SKIP] Config and DPAPI token: publish service executable first"
+}
+
 if (Test-Path -LiteralPath $configPath -PathType Leaf) {
   try {
     $config = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
