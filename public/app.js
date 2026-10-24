@@ -71,7 +71,7 @@ async function loadDashboard(showMessage) {
     currentDevices = deviceResult.items;
     applyFilters();
     renderAudit(audit.items);
-    if (showMessage) showToast("Demo data refreshed");
+    if (showMessage) showToast("Workspace data refreshed");
   } catch (error) {
     showToast("Could not load dashboard. Check the server and retry.");
     $("deviceRows").innerHTML = '<tr><td colspan="5" class="empty-state">Dashboard data is unavailable.</td></tr>';
@@ -117,6 +117,8 @@ async function initializeAuth() {
   try {
     const ready = await getJson("/api/ready");
     authRequired = Boolean(ready.authRequired);
+    const mode = $("workspaceMode");
+    if (mode) mode.textContent = ready.mode === "database" ? "CONNECTED WORKSPACE" : "DEMO DATA";
     if (authRequired) {
       showAuthGate("Sign in with your workspace administrator account.");
       return;
@@ -149,6 +151,9 @@ $("loginForm").addEventListener("submit", async (event) => {
     if (!response.ok) throw new Error(data.error || "Sign-in failed.");
     accessToken = data.token;
     $("loginPassword").value = "";
+    $("logoutButton").hidden = false;
+    $("userAvatar").textContent = (data.user.email || "U").slice(0, 1).toUpperCase();
+    $("userAvatar").setAttribute("aria-label", "Signed-in user " + data.user.email + ", role " + data.user.role);
     $("authGate").hidden = true;
     const shell = document.querySelector(".app-shell");
     if (shell) shell.removeAttribute("aria-hidden");
@@ -159,4 +164,18 @@ $("loginForm").addEventListener("submit", async (event) => {
     button.disabled = false;
   }
 });
+$("logoutButton").addEventListener("click", async () => {
+  try {
+    await fetch("/api/auth/logout", {
+      method: "POST",
+      headers: { Authorization: "Bearer " + accessToken, Accept: "application/json" }
+    });
+  } catch (_error) {
+    // Clear the client token even if the network is unavailable.
+  }
+  accessToken = "";
+  $("logoutButton").hidden = true;
+  showAuthGate("You have signed out. Sign in to continue.");
+});
+
 initializeAuth();
