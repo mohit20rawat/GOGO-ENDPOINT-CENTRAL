@@ -33,7 +33,7 @@ if (process.env.DATABASE_URL) {
 const hashToken = (token) => crypto.createHash("sha256").update(token).digest("hex");
 const validEmail = (value) => typeof value === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) && value.length <= 254;
 
-async function initializeDatabase(pool = defaultPool, env = process.env) {
+async function initializeDatabaseSchema(pool, env = process.env) {
   if (!pool) return;
   await pool.query(`CREATE TABLE IF NOT EXISTS tenants (
     id TEXT PRIMARY KEY, name TEXT NOT NULL, slug TEXT NOT NULL UNIQUE,
@@ -112,6 +112,35 @@ async function initializeDatabase(pool = defaultPool, env = process.env) {
         ["usr_" + crypto.randomUUID(),tenantId,email,passwordHash]);
       console.log("Bootstrap administrator created for configured tenant.");
     }
+  }
+}
+
+
+async function initializeDatabase(pool = defaultPool, env = process.env) {
+  if (!pool) return;
+  const client = await pool.connect();
+  let lockAcquired = false;
+  let transactionStarted = false;
+  try {
+    await client.query("SELECT pg_advisory_lock($1)", [741902611]);
+    lockAcquired = true;
+    await client.query("BEGIN");
+    transactionStarted = true;
+    await initializeDatabaseSchema(client, env);
+    await client.query("CREATE TABLE IF NOT EXISTS schema_migrations (version TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW())");
+    await client.query("INSERT INTO schema_migrations (version) VALUES ('001_initial_schema') ON CONFLICT (version) DO NOTHING");
+    await client.query("COMMIT");
+    transactionStarted = false;
+  } catch (error) {
+    if (transactionStarted) {
+      try { await client.query("ROLLBACK"); } catch (_rollbackError) {}
+    }
+    throw error;
+  } finally {
+    if (lockAcquired) {
+      try { await client.query("SELECT pg_advisory_unlock($1)", [741902611]); } catch (_unlockError) {}
+    }
+    client.release();
   }
 }
 
