@@ -18,11 +18,18 @@ test("PostgreSQL enrollment, heartbeat, token rotation, revocation, and audit fl
   });
   let server;
   try {
-    await initializeDatabase(pool, {
+    const bootstrapEnv = {
       BOOTSTRAP_TENANT_NAME: "GOGO Integration Test",
       BOOTSTRAP_ADMIN_EMAIL: "integration-admin@example.test",
       BOOTSTRAP_ADMIN_PASSWORD: "integration-test-password-123"
-    });
+    };
+    // Concurrent startups should serialize schema initialization and remain safe to retry.
+    await Promise.all([
+      initializeDatabase(pool, bootstrapEnv),
+      initializeDatabase(pool, bootstrapEnv)
+    ]);
+    const migration = await pool.query("SELECT version FROM schema_migrations WHERE version = $1", ["001_initial_schema"]);
+    assert.equal(migration.rowCount, 1);
     server = createApp({ pool }).listen(0);
     await new Promise((resolve, reject) => {
       server.once("listening", resolve);
