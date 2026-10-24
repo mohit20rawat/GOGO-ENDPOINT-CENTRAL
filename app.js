@@ -180,8 +180,23 @@ function createApp({ pool = defaultPool } = {}) {
   app.get("/health", (_req,res) => res.status(200).json({ status:"ok", service:"gogo-endpoint-central" }));
   app.get("/api/ready", async (_req,res) => {
     if (!pool) return res.status(200).json({ ready:true, mode:"demo", persistence:"in-memory", authRequired:false });
-    try { await pool.query("SELECT 1"); return res.json({ ready:true, mode:"database", persistence:"postgresql", authRequired:true }); }
-    catch (_error) { return res.status(503).json({ ready:false, mode:"database", persistence:"postgresql", authRequired:true }); }
+    try {
+      const result = await pool.query(
+        "SELECT EXISTS (SELECT 1 FROM schema_migrations WHERE version = $1) AS baseline_applied, " +
+        "to_regclass('public.tenants') IS NOT NULL AND to_regclass('public.users') IS NOT NULL AND " +
+        "to_regclass('public.auth_sessions') IS NOT NULL AND to_regclass('public.devices') IS NOT NULL AND " +
+        "to_regclass('public.audit_events') IS NOT NULL AND to_regclass('public.enrollment_tokens') IS NOT NULL AND " +
+        "to_regclass('public.device_agent_tokens') IS NOT NULL AS required_tables_present",
+        ["001_initial_schema"]
+      );
+      const row = result.rows[0];
+      if (!row.baseline_applied || !row.required_tables_present) {
+        return res.status(503).json({ ready:false, mode:"database", persistence:"postgresql", authRequired:true });
+      }
+      return res.json({ ready:true, mode:"database", persistence:"postgresql", authRequired:true, schemaVersion:"001_initial_schema" });
+    } catch (_error) {
+      return res.status(503).json({ ready:false, mode:"database", persistence:"postgresql", authRequired:true });
+    }
   });
 
   const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: "draft-7", legacyHeaders: false, message: { error: "Too many sign-in attempts. Try again later." } });
