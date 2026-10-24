@@ -15,7 +15,7 @@ Open an elevated PowerShell session. The backend must be deployed with a dedicat
     Start-Service -Name GogoEndpointCentralAgent
     Get-Service -Name GogoEndpointCentralAgent
 
-Enrollment prompts for an HTTPS server URL and single-use token, with token input masked. The service uses machine-scope DPAPI for its token, alongside NTFS ACLs. The installer creates the service with demand start so enrollment can finish before service start.
+Enrollment prompts for an HTTPS server URL and single-use token, with token input masked. The service uses machine-scope DPAPI for its token, alongside NTFS ACLs. The installer creates the service with demand start so enrollment can finish before service start. After enrollment, run `.\agent\windows\test-agent-service.ps1` from an elevated PowerShell session to check service registration, configuration, token-file presence, backend readiness, and state-directory ACL scope. Use `-SkipRemoteCheck` to run only local checks. The diagnostic is read-only and does not prove a heartbeat was accepted.
 
 ## Uninstall
 
@@ -26,7 +26,7 @@ Enrollment state is preserved by default. For intentional local offboarding, pas
 ## Current limitations
 
 - Initial Windows service host using .NET 8; target OS support still needs verification.
-- The installer currently grants access through a broad service-SID group and must be tightened to the exact service SID after testing on a real Windows host. Review the resulting ACL before production.
+- Service SID ACL behavior and installer command-line quoting still require verification on a real Windows host. Review the resulting ACL before production.
 - Reports agent version 0.2.0; telemetry is limited to heartbeat/version.
 - No MSI, code signing, automatic updates, patch management, remote command execution, or production security certification.
 - Token rotation failure after server commit requires re-enrollment. Do not retry with the old credential.
