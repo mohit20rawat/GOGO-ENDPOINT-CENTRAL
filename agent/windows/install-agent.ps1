@@ -31,6 +31,7 @@ $trigger = New-ScheduledTaskTrigger -AtLogOn -User ([System.Security.Principal.W
 $principal = New-ScheduledTaskPrincipal -UserId ([System.Security.Principal.WindowsIdentity]::GetCurrent().Name) -LogonType Interactive -RunLevel Limited
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) -MultipleInstances IgnoreNew -ExecutionTimeLimit ([TimeSpan]::Zero)
 Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Description "Starts the GOGO Endpoint Central agent in the enrolling user's profile after logon." -Force | Out-Null
-Write-Host "Installed per-user logon task '$taskName'."
+Start-ScheduledTask -TaskName $taskName
+Write-Host "Installed and started per-user logon task '$taskName'."
 Write-Host "It runs only after this user logs on so DPAPI can decrypt this user's agent token."
 Write-Host "This is not a Windows Service; the agent will not report while the user is logged off."
