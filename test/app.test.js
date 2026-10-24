@@ -43,3 +43,23 @@ test("user administration is unavailable in demo mode", async () => withServer(a
   const response = await fetch(base + "/api/admin/users",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({email:"x@example.com",password:"a-secure-password",role:"admin"})});
   assert.equal(response.status,503);
 }));
+
+test("enrollment token creation is disabled without PostgreSQL", async () => withServer(async base => {
+  const response = await fetch(base + "/api/admin/enrollment-tokens", { method:"POST" });
+  assert.equal(response.status,503);
+  assert.match((await response.json()).error,/requires PostgreSQL/);
+}));
+test("agent enrollment is disabled without PostgreSQL", async () => withServer(async base => {
+  const response = await fetch(base + "/api/agent/enroll", {
+    method:"POST", headers:{"content-type":"application/json"},
+    body:JSON.stringify({enrollmentToken:"example-enrollment-token-value",name:"TEST-LAPTOP",os:"Windows",osVersion:"11"})
+  });
+  assert.equal(response.status,503);
+}));
+test("agent heartbeat is disabled without PostgreSQL", async () => withServer(async base => {
+  const response = await fetch(base + "/api/agent/heartbeat", {
+    method:"POST", headers:{"content-type":"application/json","authorization":"Bearer example-agent-token"},
+    body:JSON.stringify({agentVersion:"0.1.0"})
+  });
+  assert.equal(response.status,503);
+}));
