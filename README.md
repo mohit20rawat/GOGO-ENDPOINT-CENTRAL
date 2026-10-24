@@ -13,6 +13,7 @@ Cloud-ready starter for a unified endpoint management platform. This is a protot
 - Database-backed device enrollment API and per-device opaque agent tokens
 - Authenticated agent heartbeat API with enrollment/heartbeat rate limits
 - Admin-only agent credential revocation with an audit event
+- Agent-authenticated transactional token rotation; previous token is invalidated and rotation is audited
 - Inventory/summary automatically treat devices with no heartbeat for five minutes as offline
 - Tenant-oriented database indexes for common inventory and audit queries
 - CI tests via Node's built-in test runner
@@ -48,16 +49,17 @@ These endpoints require PostgreSQL and are not enabled in demo mode.
 - A device submits `POST /api/agent/enroll` with `enrollmentToken`, `name`, `os`, and `osVersion`. The token is claimed transactionally, so it cannot be reused.
 - Enrollment returns a per-device `agentToken` once. Store it in an OS-protected secret store; never place it in source code or logs.
 - The agent sends `POST /api/agent/heartbeat` with `Authorization: Bearer <agentToken>` and an optional `agentVersion`.
+- To rotate its credential, the authenticated agent sends `POST /api/agent/rotate-token` with its current bearer token. The response contains the replacement `agentToken` once; the old token is invalid immediately after the transaction commits. Persist the replacement securely before continuing normal heartbeats.
 - Enrollment tokens expire after 24 hours. Admins can revoke a device's agent credential with `POST /api/admin/devices/:deviceId/revoke-agent`; the device is marked offline and the action is audited. Re-enrollment is required afterward.
 
-This is API groundwork only. A signed, packaged agent, platform-specific secure token storage, token rotation/revocation, replay protection, device uninstall/offboarding, and integration tests against a real PostgreSQL instance are still required. Do not deploy agents to production devices yet.
+This is API groundwork only. A signed, packaged agent, platform-specific secure token storage, replay protection, device uninstall/offboarding, and integration tests against a real PostgreSQL instance are still required. Do not deploy agents to production devices yet.
 
 ## Security boundaries
 - Database mode requires bearer authentication for inventory, summary, audit, and user administration.
 - Session tokens are random, expire after eight hours, and only their SHA-256 hashes are stored.
 - Passwords are hashed using bcrypt; raw passwords and tokens are never written to logs.
 - SQL queries scope device/audit access to the authenticated tenant.
-- This is not yet production-ready: password reset, MFA/SSO, richer audit logging, tenant onboarding, automated migration tooling, a restrictive Content Security Policy, backups, monitoring, agent token rotation, and formal security review remain.
+- This is not yet production-ready: password reset, MFA/SSO, richer audit logging, tenant onboarding, automated migration tooling, a restrictive Content Security Policy, backups, monitoring, formal security review remain.
 - Do not connect real endpoints or enable consequential management actions until those controls are reviewed and implemented.
 
 ## Deployment
@@ -69,6 +71,6 @@ Configure `DATABASE_URL` and the bootstrap administrator secrets in Render's env
 3. Authentication, roles, and tenant-scoped reads (current milestone).
 4. Harden auth with rate limits, password recovery/MFA/SSO, and audited administration.
 5. Device enrollment, authenticated heartbeat, stale-device detection, agent credential revocation, and effective-status filtering (API prototype).
-6. Signed platform-specific agent, secure token storage, rotation, and integration tests against PostgreSQL.
+6. Signed platform-specific agent, secure token storage, replay protection, and integration tests against PostgreSQL (token rotation API now exists).
 7. Patch/software management and policy enforcement with approvals.
 8. AI-assisted recommendations with human approval.
