@@ -16,7 +16,7 @@ if (-not (Get-Service -Name $serviceName -ErrorAction SilentlyContinue)) {
 }
 & sc.exe sidtype $serviceName unrestricted
 if ($LASTEXITCODE -ne 0) { throw "Failed to enable service SID." }
-& icacls.exe $stateDirectory /grant '*S-1-5-80-0:(OI)(CI)M' | Out-Null
+& icacls.exe $stateDirectory /grant 'NT SERVICE\GogoEndpointCentralAgent:(OI)(CI)M' | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "Failed to grant service-SID group access." }
 Write-Host "Service installed but not started. Enroll first:"
 Write-Host ('& "' + $exePath + '" --enroll')
