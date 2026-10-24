@@ -1,98 +1,55 @@
-# Hi, I'm Mohit Rawat 👋
+# GOGO Endpoint Central
 
-[![LinkedIn](https://img.shields.io/badge/LinkedIn-%230077B5.svg?style=for-the-badge&logo=linkedin&logoColor=white)](https://linkedin.com/in/yourprofile)
-[![Portfolio](https://img.shields.io/badge/Portfolio-000000?style=for-the-badge&logo=vercel&logoColor=white)](https://yourportfolio.com)
-[![Email](https://img.shields.io/badge/Email-D14836?style=for-the-badge&logo=gmail&logoColor=white)](mailto:you@example.com)
+A cloud-ready starter for a unified endpoint management (UEM) platform. This first milestone is a **demo MVP**: a dashboard, sample device inventory, summary API, health endpoint, audit-event examples, and automated tests.
 
-Technology executive based in India, focused on digital transformation, enterprise innovation, and business-aligned IT leadership. I help organizations leverage technology to improve operational efficiency, strengthen resilience, and create measurable business value.
+> **Important:** This is not yet a production endpoint-management or security product. It does not install agents, execute commands on devices, remotely lock devices, or deploy patches. The inventory and audit events are sample data.
 
-## About Me
+## Current MVP
 
-- 💼 Role: IT Executive
-- 🌍 Location: India
-- 🏢 Focus Areas: Digital Transformation, Enterprise IT, Strategy, Cloud, Cybersecurity, Governance
-- 🎯 Mission: To align technology decisions with business outcomes and build sustainable, future-ready organizations
-- 🤝 Open to: Leadership opportunities, strategic collaborations, advisory engagements, technology networking
+- Responsive web dashboard with fleet summary and device inventory
+- JSON APIs: \`/health\`, \`/api/ready\`, \`/api/summary\`, \`/api/devices\`, \`/api/audit\`
+- Basic search and status filtering in the dashboard
+- Node.js + Express server
+- Automated smoke tests using Node's built-in test runner
+- Render deployment configuration
 
-## Core Expertise
+## Run locally
 
-- Enterprise Technology Strategy
-- Digital Transformation Leadership
-- IT Modernization & Roadmapping
-- Cloud Adoption & Infrastructure Strategy
-- Cybersecurity & Risk Management
-- Business Process Optimization
-- Program & Portfolio Management
-- Vendor & Stakeholder Management
-- Leadership & Team Development
+Requirements: Node.js 20 or newer.
 
-## Leadership Focus
+\`\`\`bash
+npm install
+npm start
+\`\`\`
 
-I believe technology leadership is about enabling business agility, creating operational clarity, and building resilient systems that support long-term growth. My work sits at the intersection of strategy, execution, and innovation.
+Open http://localhost:3000. Run tests with \`npm test\`.
 
-I focus on:
-- Aligning technology investment with business priorities
-- Driving modernization without disrupting operations
-- Improving enterprise performance and service delivery
-- Strengthening cybersecurity and governance frameworks
-- Building high-performing, collaborative teams
+## Deploy to Render
 
-## Strategic Priorities
+1. Push this repository to GitHub.
+2. In Render, create a **Web Service** connected to this repository.
+3. Render can use the included \`render.yaml\`; the service runs \`npm start\`.
+4. After deployment, verify \`/health\` returns JSON with \`"status":"ok"\`.
 
-- 🔹 Business-first technology decisions
-- 🔹 Secure and scalable enterprise systems
-- 🔹 Operational efficiency and simplification
-- 🔹 Innovation backed by governance
-- 🔹 Data-driven transformation
+The free service tier may sleep when idle and is not suitable for a production enterprise control plane.
 
-## Technology & Business Areas
+## Planned milestones
 
-### Strategy & Planning
-- IT Strategy
-- Transformation Roadmaps
-- Governance & Policy
-- Portfolio Planning
+1. **Foundation:** application shell, API, tests, cloud deployment baseline.
+2. **Identity and access:** secure login, MFA-ready design, role-based access, tenant boundaries.
+3. **Persistent inventory:** PostgreSQL, device registration, asset assignment and repair/return history.
+4. **Endpoint agent:** signed enrollment, heartbeat, inventory collection, secure command channel.
+5. **Management modules:** patch/software deployment, policies, alerts, reports and audit trails.
+6. **Security and operations:** threat modelling, rate limits, secrets management, backups, monitoring and security tests.
+7. **AI assistance:** explainable summaries and recommendations, with human approval for consequential actions.
 
-### Infrastructure & Innovation
-- Cloud Strategy
-- Modernization
-- Automation
-- Platform Optimization
+## Security principles
 
-### Security & Resilience
-- Cybersecurity
-- Compliance
-- Risk Management
-- Business Continuity
+- Never store passwords, API keys, or deployment secrets in source control.
+- Do not connect real devices to this demo.
+- High-impact actions such as remote lock, software installation, or policy changes must require authentication, authorization, audit logging, and explicit safeguards.
+- A production release requires security review, tenant-isolation tests, persistent storage, backups, and operational monitoring.
 
-### Leadership & Delivery
-- Cross-functional collaboration
-- Team building
-- Vendor management
-- Execution excellence
+## Project status
 
-## Current Focus
-
-- Driving digital transformation initiatives
-- Enhancing enterprise resilience and security posture
-- Modernizing legacy systems and workflows
-- Improving IT governance and service quality
-- Leading innovation across critical business functions
-
-## GitHub Activity
-
-![GitHub Stats](https://github-readme-stats.vercel.app/api?username=yourusername&show_icons=true&theme=tokyonight)
-
-![Top Languages](https://github-readme-stats.vercel.app/api/top-langs/?username=yourusername&layout=compact&theme=tokyonight)
-
-## Professional Philosophy
-
-Technology should create clarity, speed, and measurable business value. The best IT leadership combines strategic vision, operational discipline, and the ability to drive sustainable innovation.
-
-## Connect With Me
-
-- [LinkedIn](https://linkedin.com/in/yourprofile)
-- [Portfolio](https://yourportfolio.com)
-- [Email](mailto:you@example.com)
-
-> “The most effective technology leadership turns complexity into clarity, and innovation into impact.”
+**Milestone 1 in progress.** This repository is the foundation, not a feature-complete ManageEngine replacement.
