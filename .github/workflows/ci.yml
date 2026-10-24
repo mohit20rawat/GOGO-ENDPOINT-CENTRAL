@@ -78,3 +78,18 @@ jobs:
           if ($failed) {
             throw "One or more Windows agent scripts failed PowerShell parsing."
           }
+
+  windows-service-build:
+    name: Build .NET Windows service agent
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Restore and build Windows service
+        run: dotnet build agent/windows/service/GogoEndpointCentral.Service.csproj --configuration Release
+      - name: Publish Windows x64 service
+        run: dotnet publish agent/windows/service/GogoEndpointCentral.Service.csproj --configuration Release --runtime win-x64 --self-contained false --output agent/windows/service/publish
