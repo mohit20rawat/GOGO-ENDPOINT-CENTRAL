@@ -44,3 +44,37 @@ jobs:
           RUN_POSTGRES_INTEGRATION: "1"
           POSTGRES_TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/gogo_test
         run: npm test
+
+  windows-agent:
+    name: Windows agent PowerShell validation
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Parse all Windows agent scripts
+        shell: pwsh
+        run: |
+          $scripts = Get-ChildItem -Path agent/windows -Filter *.ps1 -File
+          if (-not $scripts) {
+            throw "No PowerShell scripts found under agent/windows."
+          }
+          $failed = $false
+          foreach ($script in $scripts) {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              $script.FullName,
+              [ref]$tokens,
+              [ref]$errors
+            ) | Out-Null
+            if ($errors.Count -gt 0) {
+              $failed = $true
+              Write-Error "PowerShell parse errors in $($script.Name):"
+              $errors | ForEach-Object { Write-Error $_.Message }
+            } else {
+              Write-Host "PASS: $($script.Name)"
+            }
+          }
+          if ($failed) {
+            throw "One or more Windows agent scripts failed PowerShell parsing."
+          }
