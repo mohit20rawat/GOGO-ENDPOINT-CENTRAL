@@ -84,7 +84,7 @@ See [the cloud deployment checklist](docs/deployment.md) for database isolation,
 
 ## Experimental Windows agent
 
-The script at `agent/windows/GogoEndpointAgent.ps1` is an early foreground prototype, not a signed installer or Windows service. It enrolls one Windows endpoint using a single-use admin token and sends a heartbeat every 60 seconds. It requires a deployed backend with PostgreSQL configured and an HTTPS URL.
+The script at `agent/windows/GogoEndpointAgent.ps1` is an early foreground prototype, not a signed installer or Windows service. It enrolls one Windows endpoint using a single-use admin token and sends a heartbeat every 60 seconds. Transient failures use bounded exponential backoff up to 15 minutes; HTTP 401 stops the loop and asks for re-enrollment. While running continuously, the prototype rotates its agent token every 24 hours and saves the replacement using current-user DPAPI. It requires a deployed backend with PostgreSQL configured and an HTTPS URL.
 
 From PowerShell, in the Windows user profile that should own the agent token:
 
@@ -94,4 +94,4 @@ From PowerShell, in the Windows user profile that should own the agent token:
 
 Paste the single-use enrollment token when prompted. The returned agent token is encrypted with Windows DPAPI for the current user. Later, start it again from the same user profile with ` .\GogoEndpointAgent.ps1 ` (without the surrounding spaces) to reuse the saved URL and token. Stop the foreground process with Ctrl+C.
 
-This prototype does not install itself as a service, auto-rotate credentials, install patches, execute remote commands, or include a signed package. Test only on a non-production endpoint until it has undergone security review and packaging.
+This prototype still runs in the foreground: it does not install itself as a Windows service, survive logoff/reboot automatically, install patches, execute remote commands, or include a signed package. Automatic token rotation only runs while the process remains alive. If the server commits rotation but the replacement token cannot be persisted, the agent stops and requires re-enrollment. Test only on a non-production endpoint until it has undergone security review and packaging.
