@@ -3,9 +3,16 @@ const assert = require("node:assert/strict");
 const { createApp } = require("../app");
 
 async function withServer(run) {
-  const server = createApp({ pool:null }).listen(0);
-  try { await run("http://127.0.0.1:" + server.address().port); }
-  finally { await new Promise((resolve,reject)=>server.close(error=>error?reject(error):resolve())); }
+  const server = createApp({ pool: null }).listen(0, "127.0.0.1");
+  try {
+    await new Promise((resolve, reject) => {
+      server.once("listening", resolve);
+      server.once("error", reject);
+    });
+    await run("http://127.0.0.1:" + server.address().port);
+  } finally {
+    await new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+  }
 }
 
 test("health endpoint reports service is alive", async () => withServer(async base => {
