@@ -161,7 +161,12 @@ test("PostgreSQL enrollment, heartbeat, token rotation, revocation, and audit fl
       headers: { ...json, authorization: "Bearer " + token },
       body: JSON.stringify({ agentVersion: "integration-test" })
     });
-    assert.equal((await heartbeat(device.agentToken)).status, 200);
+    const heartbeatResponse = await heartbeat(device.agentToken);
+    assert.equal(heartbeatResponse.status, 200);
+    const heartbeatBody = await heartbeatResponse.json();
+    assert.equal(heartbeatBody.agentVersion, "integration-test");
+    const storedAgentVersion = await pool.query("SELECT agent_version FROM devices WHERE id=$1", [device.deviceId]);
+    assert.equal(storedAgentVersion.rows[0].agent_version, "integration-test");
 
     const rotateResponse = await fetch(base + "/api/agent/rotate-token", {
       method: "POST", headers: { authorization: "Bearer " + device.agentToken }
