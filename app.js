@@ -63,6 +63,9 @@ async function initializeDatabase(pool = defaultPool, env = process.env) {
   )`);
   await pool.query("ALTER TABLE audit_events ADD COLUMN IF NOT EXISTS tenant_id TEXT");
   await pool.query("CREATE UNIQUE INDEX IF NOT EXISTS users_email_global_unique ON users (LOWER(email))");
+  await pool.query("CREATE INDEX IF NOT EXISTS devices_tenant_name_idx ON devices (tenant_id, name)");
+  await pool.query("CREATE INDEX IF NOT EXISTS devices_tenant_status_updated_idx ON devices (tenant_id, status, updated_at)");
+  await pool.query("CREATE INDEX IF NOT EXISTS audit_events_tenant_time_idx ON audit_events (tenant_id, event_time)");
   await pool.query(`CREATE TABLE IF NOT EXISTS enrollment_tokens (
     token_hash TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     created_by TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -313,7 +316,7 @@ function createApp({ pool = defaultPool } = {}) {
       if (pool) {
         const values = [req.user.tenantId];
         const clauses = ["tenant_id = $1"];
-        if (status) { values.push(status); clauses.push("status = $" + values.length); }
+        if (status) { values.push(status); clauses.push("(CASE WHEN status='online' AND updated_at < NOW() - INTERVAL '5 minutes' THEN 'offline' ELSE status END) = $" + values.length); }
         if (query) {
           values.push("%" + query.replace(/[\\%_]/g,"\\$&") + "%");
           const p = "$" + values.length;
