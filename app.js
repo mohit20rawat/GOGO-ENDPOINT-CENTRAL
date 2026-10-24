@@ -280,6 +280,38 @@ function createApp({ pool = defaultPool } = {}) {
       return next(error);
     } finally { if (client) client.release(); }
   });
+  app.post("/api/agent/rotate-token", heartbeatLimiter, async (req,res,next) => {
+    if (!pool) return res.status(503).json({ error:"Agent token rotation requires PostgreSQL." });
+    const header = req.get("authorization") || "";
+    const token = header.startsWith("Bearer ") ? header.slice(7) : "";
+    if (!token || token.length > 200) return res.status(401).json({ error:"Agent authentication required." });
+    let client;
+    try {
+      client = await pool.connect();
+      await client.query("BEGIN");
+      const current = await client.query(
+        "SELECT t.device_id,t.tenant_id,d.name FROM device_agent_tokens t JOIN devices d ON d.id=t.device_id AND d.tenant_id=t.tenant_id WHERE t.token_hash=$1 FOR UPDATE OF t,d",
+        [hashToken(token)]
+      );
+      if (!current.rowCount) {
+        await client.query("ROLLBACK");
+        return res.status(401).json({ error:"Agent token is invalid." });
+      }
+      const { device_id: deviceId, tenant_id: tenantId, name } = current.rows[0];
+      const nextToken = crypto.randomBytes(32).toString("base64url");
+      await client.query("DELETE FROM device_agent_tokens WHERE token_hash=$1", [hashToken(token)]);
+      await client.query("INSERT INTO device_agent_tokens (token_hash,device_id,tenant_id) VALUES ($1,$2,$3)",
+        [hashToken(nextToken),deviceId,tenantId]);
+      await client.query("INSERT INTO audit_events (id,action,actor,event_time,result,tenant_id) VALUES ($1,$2,$3,$4,$5,$6)",
+        ["AUD_" + crypto.randomUUID(),"Agent token rotated for device: " + name,deviceId,new Date().toISOString(),"success",tenantId]);
+      await client.query("COMMIT");
+      return res.json({ ok:true, deviceId, agentToken:nextToken, note:"Store the new token securely. It is shown only once; the previous token is now invalid." });
+    } catch (error) {
+      if (client) { try { await client.query("ROLLBACK"); } catch (_rollbackError) {} }
+      return next(error);
+    } finally { if (client) client.release(); }
+  });
+
   app.post("/api/agent/heartbeat", heartbeatLimiter, async (req,res,next) => {
     if (!pool) return res.status(503).json({ error:"Agent heartbeat requires PostgreSQL." });
     const header = req.get("authorization") || "";
