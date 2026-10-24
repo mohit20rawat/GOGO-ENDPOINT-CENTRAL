@@ -49,6 +49,22 @@ test("PostgreSQL enrollment, heartbeat, token rotation, revocation, and audit fl
       body: JSON.stringify({ email: "integration-admin@example.test", password: "integration-test-password-123" })
     });
     assert.equal(loginResponse.status, 200);
+
+    // Failed login responses must not reveal whether an email exists.
+    const invalidLoginResponses = await Promise.all([
+      fetch(base + "/api/auth/login", {
+        method: "POST", headers: json,
+        body: JSON.stringify({ email: "missing-user@example.test", password: "wrong-password-123" })
+      }),
+      fetch(base + "/api/auth/login", {
+        method: "POST", headers: json,
+        body: JSON.stringify({ email: "integration-admin@example.test", password: "wrong-password-123" })
+      })
+    ]);
+    assert.deepEqual(invalidLoginResponses.map(response => response.status), [401, 401]);
+    const invalidLoginBodies = await Promise.all(invalidLoginResponses.map(response => response.json()));
+    assert.deepEqual(invalidLoginBodies[0], invalidLoginBodies[1]);
+
     const login = await loginResponse.json();
     assert.ok(login.token);
     const adminHeaders = { ...json, authorization: "Bearer " + login.token };
