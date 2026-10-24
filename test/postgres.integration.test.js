@@ -38,6 +38,12 @@ test("PostgreSQL enrollment, heartbeat, token rotation, revocation, and audit fl
     const base = "http://127.0.0.1:" + server.address().port;
     const json = { "content-type": "application/json" };
 
+    const readinessResponse = await fetch(base + "/api/ready");
+    assert.equal(readinessResponse.status, 200);
+    const readiness = await readinessResponse.json();
+    assert.equal(readiness.ready, true);
+    assert.equal(readiness.schemaVersion, "001_initial_schema");
+
     const loginResponse = await fetch(base + "/api/auth/login", {
       method: "POST", headers: json,
       body: JSON.stringify({ email: "integration-admin@example.test", password: "integration-test-password-123" })
