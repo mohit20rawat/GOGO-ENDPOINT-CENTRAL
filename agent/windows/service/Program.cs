@@ -52,7 +52,7 @@ internal sealed class AgentWorker(ILogger<AgentWorker> logger) : BackgroundServi
         {
             var state = AgentState.Load();
             _baseUrl = state.ServerUrl;
-            _token = state.LoadToken();
+            _token = AgentState.LoadToken();
             _rotateAfter = DateTimeOffset.UtcNow.Add(RotationInterval);
             logger.LogInformation("GOGO agent service started; heartbeat interval is {IntervalSeconds}s.", HeartbeatInterval.TotalSeconds);
 
