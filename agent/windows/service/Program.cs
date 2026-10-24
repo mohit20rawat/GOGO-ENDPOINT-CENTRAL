@@ -27,6 +27,26 @@ internal static class Program
             }
         }
 
+        if (args.Length > 0 && args[0].Equals("--check-state", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                if (!OperatingSystem.IsWindows())
+                    throw new PlatformNotSupportedException("State validation is supported on Windows only.");
+                _ = AgentState.Load();
+                var token = AgentState.LoadToken();
+                if (string.IsNullOrWhiteSpace(token) || token.Length < 20 || token.Length > 200)
+                    throw new InvalidOperationException("Stored agent token length is invalid.");
+                Console.WriteLine("PASS: service configuration is valid and the encrypted token can be decrypted.");
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"State validation failed ({ex.GetType().Name}). Check enrollment and file permissions.");
+                return 1;
+            }
+        }
+
         var builder = Host.CreateApplicationBuilder(args);
         builder.Services.AddWindowsService(options => options.ServiceName = "GOGO Endpoint Central Agent");
         builder.Services.AddHostedService<AgentWorker>();
