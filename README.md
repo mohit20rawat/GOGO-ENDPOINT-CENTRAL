@@ -35,7 +35,7 @@ Set these in your hosting provider's secret/environment settings, never in sourc
 - `BOOTSTRAP_ADMIN_EMAIL`: initial administrator email
 - `BOOTSTRAP_ADMIN_PASSWORD`: initial administrator password (minimum 12 characters)
 - `BOOTSTRAP_TENANT_NAME`: optional workspace name
-- `DATABASE_SSL=disable`: only for a trusted local database without TLS; omit in production
+- `DATABASE_SSL=disable`: disables TLS and should only be used for a trusted local database; omit in production. Note: current app code disables certificate verification when SSL is enabled, so fix and test TLS verification before handling sensitive data.
 
 On startup, tables are created if missing. Existing device/audit rows are assigned to the initial `primary` tenant during the first migration. The bootstrap admin is created only if that email is not already present in the tenant. Changing the bootstrap password environment variable does not reset an existing account's password.
 
@@ -63,7 +63,7 @@ This is API groundwork only. A signed, packaged agent, platform-specific secure 
 - Do not connect real endpoints or enable consequential management actions until those controls are reviewed and implemented.
 
 ## Deployment
-Configure `DATABASE_URL` and the bootstrap administrator secrets in Render's environment settings before using database mode. Do not reuse unrelated databases. Review the database plan, expiration, backups, region and data retention before connecting it. Free services may sleep or have expiring storage and are not suitable for enterprise production.
+See [the cloud deployment checklist](docs/deployment.md) for database isolation, Render environment variables, and post-deploy verification. Configure `DATABASE_URL` and the bootstrap administrator secrets in Render's environment settings before using database mode. Do not reuse unrelated databases. Review the database plan, expiration, backups, region and data retention before connecting it. Free services may sleep or have expiring storage and are not suitable for enterprise production.
 
 ## Roadmap
 1. Dashboard and CI foundation.
