@@ -16,6 +16,8 @@ Cloud-ready starter for a unified endpoint management platform. This is a protot
 - Agent-authenticated transactional token rotation; previous token is invalidated and rotation is audited
 - Inventory/summary automatically treat devices with no heartbeat for five minutes as offline
 - Tenant-oriented database indexes for common inventory and audit queries
+- Atomic, advisory-lock-serialized database initialization with a recorded baseline schema version
+- Integration coverage for concurrent startup, role permissions, and tenant isolation
 - Unit/API tests plus PostgreSQL-backed enrollment, heartbeat, token-rotation, revocation, and audit integration tests in CI
 
 ## Run in demo mode
@@ -37,7 +39,7 @@ Set these in your hosting provider's secret/environment settings, never in sourc
 - `BOOTSTRAP_TENANT_NAME`: optional workspace name
 - `DATABASE_SSL=disable`: disables TLS and should only be used for a trusted local database; omit in production. PostgreSQL TLS certificate verification is enabled by default. Do not set this to `disable` in production; validate the provider's certificate chain before connecting real data.
 
-On startup, tables are created if missing. Existing device/audit rows are assigned to the initial `primary` tenant during the first migration. The bootstrap admin is created only if that email is not already present in the tenant. Changing the bootstrap password environment variable does not reset an existing account's password.
+On startup, schema initialization runs inside a transaction and is serialized with a PostgreSQL advisory lock so concurrent app instances do not race through setup. A `schema_migrations` table records the baseline version (`001_initial_schema`); this is a migration foundation, not yet a full version-by-version migration framework. Existing device/audit rows are assigned to the initial `primary` tenant during initialization. The bootstrap admin is created only if that email is not already present in the tenant. Changing the bootstrap password environment variable does not reset an existing account's password.
 
 The app creates the initial tenant with ID `primary-tenant` and slug `primary`. Additional user accounts can be created by an authenticated admin using `POST /api/admin/users` with `email`, `password`, and `role`.
 
