@@ -17,6 +17,7 @@ Cloud-ready starter for a unified endpoint management platform. This is a protot
 - Inventory/summary automatically treat devices with no heartbeat for five minutes as offline
 - Tenant-oriented database indexes for common inventory and audit queries
 - Atomic, advisory-lock-serialized database initialization with a recorded baseline schema version
+- Database readiness checks required tables and the applied baseline migration, not just network connectivity
 - Integration coverage for concurrent startup, role permissions, and tenant isolation
 - Unit/API tests plus PostgreSQL-backed enrollment, heartbeat, token-rotation, revocation, and audit integration tests in CI
 
