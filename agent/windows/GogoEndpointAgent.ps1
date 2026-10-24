@@ -82,6 +82,7 @@ if ($Enroll) { Invoke-Enrollment -BaseUrl $baseUrl }
 $token = Get-AgentToken
 $retryDelaySeconds = $IntervalSeconds
 $nextRotationUtc = [DateTime]::UtcNow.AddHours(24)
+$rotationCommitted = $false
 Write-Host "GOGO Endpoint Central agent $AgentVersion started. Heartbeat interval: $IntervalSeconds seconds."
 Write-Host "Token rotation is scheduled every 24 hours while this process remains running."
 try {
@@ -101,14 +102,20 @@ try {
         if ([string]::IsNullOrWhiteSpace([string]$rotation.agentToken)) {
           throw "Token rotation response did not include a replacement token."
         }
+        $rotationCommitted = $true
         Save-AgentToken -Token ([string]$rotation.agentToken)
         $token = [string]$rotation.agentToken
+        $rotationCommitted = $false
         $nextRotationUtc = [DateTime]::UtcNow.AddHours(24)
         Write-Host "$(Get-Date -Format o) agent credential rotated and securely saved."
         $rotation.agentToken = $null
       }
       Start-Sleep -Seconds $IntervalSeconds
     } catch {
+      if ($rotationCommitted) {
+        Write-Error "The server rotated the token, but the replacement could not be saved. Stop and re-enroll this device."
+        break
+      }
       $statusCode = $null
       try { $statusCode = [int]$_.Exception.Response.StatusCode } catch {}
       if ($statusCode -eq 401) {
