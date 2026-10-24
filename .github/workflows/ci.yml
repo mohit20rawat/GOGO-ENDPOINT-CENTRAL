@@ -97,8 +97,9 @@ jobs:
         shell: pwsh
         run: |
           $package = "dist/GogoEndpointCentral-Windows-x64"
-          New-Item -ItemType Directory -Path $package -Force | Out-Null
-          Copy-Item "agent/windows/service/publish/*" $package -Recurse -Force
+          $publish = Join-Path $package "service/publish"
+          New-Item -ItemType Directory -Path $publish -Force | Out-Null
+          Copy-Item "agent/windows/service/publish/*" $publish -Recurse -Force
           Copy-Item "agent/windows/install-agent-service.ps1" $package -Force
           Copy-Item "agent/windows/uninstall-agent-service.ps1" $package -Force
           Copy-Item "agent/windows/test-agent-service.ps1" $package -Force
