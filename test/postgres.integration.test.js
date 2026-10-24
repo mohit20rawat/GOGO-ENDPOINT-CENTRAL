@@ -1,6 +1,8 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { Pool } = require("pg");
+const bcrypt = require("bcryptjs");
+const crypto = require("node:crypto");
 const { createApp, initializeDatabase } = require("../app");
 
 const databaseUrl = process.env.POSTGRES_TEST_DATABASE_URL;
@@ -37,6 +39,61 @@ test("PostgreSQL enrollment, heartbeat, token rotation, revocation, and audit fl
     const login = await loginResponse.json();
     assert.ok(login.token);
     const adminHeaders = { ...json, authorization: "Bearer " + login.token };
+
+    // Role checks: a viewer can read workspace data but cannot administer users or enroll devices.
+    const viewerEmail = "integration-viewer-" + crypto.randomUUID() + "@example.test";
+    const viewerCreateResponse = await fetch(base + "/api/admin/users", {
+      method: "POST", headers: adminHeaders,
+      body: JSON.stringify({ email: viewerEmail, password: "integration-viewer-password-123", role: "viewer" })
+    });
+    assert.equal(viewerCreateResponse.status, 201);
+    const viewerLoginResponse = await fetch(base + "/api/auth/login", {
+      method: "POST", headers: json,
+      body: JSON.stringify({ email: viewerEmail, password: "integration-viewer-password-123" })
+    });
+    assert.equal(viewerLoginResponse.status, 200);
+    const viewerLogin = await viewerLoginResponse.json();
+    const viewerHeaders = { ...json, authorization: "Bearer " + viewerLogin.token };
+    assert.equal((await fetch(base + "/api/admin/enrollment-tokens", {
+      method: "POST", headers: viewerHeaders, body: "{}"
+    })).status, 403);
+    assert.equal((await fetch(base + "/api/admin/users", {
+      method: "POST", headers: viewerHeaders,
+      body: JSON.stringify({ email: "blocked-" + crypto.randomUUID() + "@example.test", password: "blocked-password-123", role: "viewer" })
+    })).status, 403);
+    assert.equal((await fetch(base + "/api/devices", { headers: viewerHeaders })).status, 200);
+
+    // Tenant boundary: a second tenant's device must never appear in the primary tenant's inventory.
+    const isolatedTenantId = "tenant_" + crypto.randomUUID();
+    const isolatedUserId = "usr_" + crypto.randomUUID();
+    const isolatedDeviceId = "dev_" + crypto.randomUUID();
+    const isolatedEmail = "integration-other-" + crypto.randomUUID() + "@example.test";
+    const isolatedPasswordHash = await bcrypt.hash("integration-other-password-123", 4);
+    await pool.query("INSERT INTO tenants (id,name,slug) VALUES ($1,$2,$3)", [
+      isolatedTenantId, "Isolation Test Tenant", "isolation-" + crypto.randomUUID()
+    ]);
+    await pool.query("INSERT INTO users (id,tenant_id,email,password_hash,role) VALUES ($1,$2,$3,$4,'admin')", [
+      isolatedUserId, isolatedTenantId, isolatedEmail, isolatedPasswordHash
+    ]);
+    await pool.query(
+      "INSERT INTO devices (id,name,assigned_user,department,os,os_version,status,risk,last_seen,tenant_id) VALUES ($1,$2,$3,$4,$5,$6,'offline','low','Never',$7)",
+      [isolatedDeviceId, "ISOLATION-ONLY-DEVICE", "Other Tenant User", "Testing", "Linux", "Test", isolatedTenantId]
+    );
+    const isolatedLoginResponse = await fetch(base + "/api/auth/login", {
+      method: "POST", headers: json,
+      body: JSON.stringify({ email: isolatedEmail, password: "integration-other-password-123" })
+    });
+    assert.equal(isolatedLoginResponse.status, 200);
+    const isolatedLogin = await isolatedLoginResponse.json();
+    const isolatedHeaders = { ...json, authorization: "Bearer " + isolatedLogin.token };
+    const otherTenantInventory = await (await fetch(base + "/api/devices?q=ISOLATION-ONLY-DEVICE", {
+      headers: isolatedHeaders
+    })).json();
+    assert.equal(otherTenantInventory.total, 1);
+    const primaryTenantInventory = await (await fetch(base + "/api/devices?q=ISOLATION-ONLY-DEVICE", {
+      headers: adminHeaders
+    })).json();
+    assert.equal(primaryTenantInventory.total, 0);
 
     const enrollmentResponse = await fetch(base + "/api/admin/enrollment-tokens", {
       method: "POST", headers: adminHeaders, body: "{}"
