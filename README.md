@@ -79,6 +79,17 @@ The installer registers and starts a Scheduled Task under the current user's int
 
 Uninstalling the task does not delete the saved token or server URL. Device credential revocation/offboarding must be handled separately. This is an interim user-session auto-start mechanism, **not a Windows Service**: it cannot report while the user is logged off, and it has not been validated on a real Windows endpoint in this repository workflow. Run only in a test environment.
 
+
+### Windows agent diagnostics
+
+Run the read-only diagnostics from the same Windows user profile that enrolled the agent:
+
+```powershell
+.\test-agent.ps1
+```
+
+The script checks whether the local state files exist, whether the current user can open the DPAPI-encrypted token, whether the saved server URL uses HTTPS, whether `/api/ready` responds, and whether the Scheduled Task exists. It never prints or sends the agent token and does not change local files or tasks. Use `-SkipRemoteCheck` to skip the network readiness request. A successful readiness check does not prove that a heartbeat was accepted; confirm the device's last heartbeat in the authenticated dashboard.
+
 ## Security boundaries
 - Database mode requires bearer authentication for inventory, summary, audit, and user administration.
 - Session tokens are random, expire after eight hours, and only their SHA-256 hashes are stored.
