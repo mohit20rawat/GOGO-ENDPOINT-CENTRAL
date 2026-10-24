@@ -109,6 +109,15 @@ test("PostgreSQL enrollment, heartbeat, token rotation, revocation, and audit fl
     const audit = await auditResponse.json();
     assert.ok(audit.items.some(item => item.action.includes("Agent token rotated")));
     assert.ok(audit.items.some(item => item.action.includes("Agent credentials revoked")));
+
+    const logoutResponse = await fetch(base + "/api/auth/logout", {
+      method: "POST", headers: adminHeaders
+    });
+    assert.equal(logoutResponse.status, 200);
+    const expiredSessionResponse = await fetch(base + "/api/auth/me", {
+      headers: { authorization: "Bearer " + login.token }
+    });
+    assert.equal(expiredSessionResponse.status, 401);
   } finally {
     if (server) await new Promise(resolve => server.close(resolve));
     await pool.end();
