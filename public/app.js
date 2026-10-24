@@ -24,7 +24,7 @@ async function getJson(url) {
 function renderDevices(items) {
   const rows = $("deviceRows");
   $("deviceCount").textContent = items.length + (items.length === 1 ? " device" : " devices");
-  $("resultsText").textContent = "Showing " + items.length + " sample " + (items.length === 1 ? "device" : "devices");
+  $("resultsText").textContent = "Showing " + items.length + " " + (items.length === 1 ? "device" : "devices");
   if (!items.length) {
     rows.innerHTML = '<tr><td colspan="5" class="empty-state">No devices match your search.</td></tr>';
     return;
@@ -105,7 +105,8 @@ $("exportButton").addEventListener("click", () => {
   const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
   const link = document.createElement("a");
   link.href = url;
-  link.download = "gogo-device-inventory-demo.csv";
+  const mode = $("workspaceMode")?.textContent === "CONNECTED WORKSPACE" ? "inventory" : "demo-inventory";
+  link.download = "gogo-device-" + mode + ".csv";
   document.body.appendChild(link);
   link.click();
   link.remove();
