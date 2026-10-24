@@ -23,8 +23,12 @@ Write-Check "ProgramData state directory" (Test-Path -LiteralPath $stateDirector
 Write-Check "Service config" (Test-Path -LiteralPath $configPath -PathType Leaf) $(if (Test-Path -LiteralPath $configPath -PathType Leaf) { "exists; contents not printed" } else { "missing; enroll the service first" })
 Write-Check "Encrypted agent token" (Test-Path -LiteralPath $tokenPath -PathType Leaf) $(if (Test-Path -LiteralPath $tokenPath -PathType Leaf) { "encrypted token file exists; contents hidden" } else { "missing; enroll the service first" })
 
-$serviceExe = Join-Path $PSScriptRoot "service\publish\GogoEndpointCentral.Service.exe"
-if (Test-Path -LiteralPath $serviceExe -PathType Leaf) {
+$serviceExeCandidates = @(
+  (Join-Path $PSScriptRoot "GogoEndpointCentral.Service.exe"),
+  (Join-Path $PSScriptRoot "service\publish\GogoEndpointCentral.Service.exe")
+)
+$serviceExe = $serviceExeCandidates | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
+if ($serviceExe) {
   try {
     $stateOutput = & $serviceExe --check-state 2>&1
     $stateExitCode = $LASTEXITCODE
