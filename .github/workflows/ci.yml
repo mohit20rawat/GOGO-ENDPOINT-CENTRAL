@@ -105,6 +105,27 @@ jobs:
           Copy-Item "agent/windows/test-agent-service.ps1" $package -Force
           Copy-Item "agent/windows/service/README.md" (Join-Path $package "README.md") -Force
           Compress-Archive -Path $package -DestinationPath "dist/GogoEndpointCentral-Windows-x64.zip" -Force
+      - name: Verify packaged files
+        shell: pwsh
+        run: |
+          $zip = "dist/GogoEndpointCentral-Windows-x64.zip"
+          $expanded = Join-Path $env:RUNNER_TEMP "gogo-package-check"
+          Expand-Archive -LiteralPath $zip -DestinationPath $expanded -Force
+          $root = Join-Path $expanded "GogoEndpointCentral-Windows-x64"
+          $required = @(
+            "service/publish/GogoEndpointCentral.Service.exe",
+            "install-agent-service.ps1",
+            "uninstall-agent-service.ps1",
+            "test-agent-service.ps1",
+            "README.md"
+          )
+          foreach ($relative in $required) {
+            $path = Join-Path $root $relative
+            if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+              throw "Package is missing required file: $relative"
+            }
+            Write-Host "PASS: $relative"
+          }
       - name: Upload experimental Windows x64 package
         uses: actions/upload-artifact@v4
         with:
