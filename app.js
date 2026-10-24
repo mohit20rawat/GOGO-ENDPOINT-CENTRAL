@@ -57,6 +57,7 @@ async function initializeDatabaseSchema(pool, env = process.env) {
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )`);
   await pool.query("ALTER TABLE devices ADD COLUMN IF NOT EXISTS tenant_id TEXT");
+  await pool.query("ALTER TABLE devices ADD COLUMN IF NOT EXISTS agent_version TEXT");
   await pool.query(`CREATE TABLE IF NOT EXISTS audit_events (
     id TEXT PRIMARY KEY, action TEXT NOT NULL, actor TEXT NOT NULL,
     event_time TEXT NOT NULL, result TEXT NOT NULL CHECK (result IN ('success','failure'))
@@ -364,12 +365,12 @@ function createApp({ pool = defaultPool } = {}) {
     const agentVersion = typeof req.body.agentVersion === "string" ? req.body.agentVersion.slice(0,40) : null;
     try {
       const result = await pool.query(
-        "UPDATE devices d SET status='online',last_seen=NOW()::text,updated_at=NOW() FROM device_agent_tokens t WHERE t.token_hash=$1 AND t.device_id=d.id AND t.tenant_id=d.tenant_id RETURNING d.id,d.tenant_id",
-        [hashToken(token)]
+        "UPDATE devices d SET status='online',last_seen=NOW()::text,updated_at=NOW(),agent_version=COALESCE($2,d.agent_version) FROM device_agent_tokens t WHERE t.token_hash=$1 AND t.device_id=d.id AND t.tenant_id=d.tenant_id RETURNING d.id,d.tenant_id,d.agent_version",
+        [hashToken(token),agentVersion]
       );
       if (!result.rowCount) return res.status(401).json({ error:"Agent token is invalid." });
       await pool.query("UPDATE device_agent_tokens SET last_used_at=NOW() WHERE token_hash=$1",[hashToken(token)]);
-      return res.json({ ok:true, deviceId:result.rows[0].id, receivedAt:new Date().toISOString(), agentVersion });
+      return res.json({ ok:true, deviceId:result.rows[0].id, receivedAt:new Date().toISOString(), agentVersion:result.rows[0].agent_version });
     } catch (error) { return next(error); }
   });
 
