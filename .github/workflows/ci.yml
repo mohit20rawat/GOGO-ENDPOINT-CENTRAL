@@ -93,3 +93,21 @@ jobs:
         run: dotnet build agent/windows/service/GogoEndpointCentral.Service.csproj --configuration Release
       - name: Publish Windows x64 service
         run: dotnet publish agent/windows/service/GogoEndpointCentral.Service.csproj --configuration Release --runtime win-x64 --self-contained false --output agent/windows/service/publish
+      - name: Assemble experimental test package
+        shell: pwsh
+        run: |
+          $package = "dist/GogoEndpointCentral-Windows-x64"
+          New-Item -ItemType Directory -Path $package -Force | Out-Null
+          Copy-Item "agent/windows/service/publish/*" $package -Recurse -Force
+          Copy-Item "agent/windows/install-agent-service.ps1" $package -Force
+          Copy-Item "agent/windows/uninstall-agent-service.ps1" $package -Force
+          Copy-Item "agent/windows/test-agent-service.ps1" $package -Force
+          Copy-Item "agent/windows/service/README.md" (Join-Path $package "README.md") -Force
+          Compress-Archive -Path $package -DestinationPath "dist/GogoEndpointCentral-Windows-x64.zip" -Force
+      - name: Upload experimental Windows x64 package
+        uses: actions/upload-artifact@v4
+        with:
+          name: GogoEndpointCentral-Windows-x64-experimental
+          path: dist/GogoEndpointCentral-Windows-x64.zip
+          if-no-files-found: error
+          retention-days: 7
