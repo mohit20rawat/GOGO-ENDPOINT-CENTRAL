@@ -80,7 +80,7 @@ $baseUrl = Get-ServerBaseUrl -Candidate $ServerUrl
 if ($Enroll) { Invoke-Enrollment -BaseUrl $baseUrl }
 
 $token = Get-AgentToken
-$retryDelaySeconds = $IntervalSeconds
+$retryDelaySeconds = [Math]::Min(900, $IntervalSeconds)
 $nextRotationUtc = [DateTime]::UtcNow.AddHours(24)
 $rotationCommitted = $false
 Write-Host "GOGO Endpoint Central agent $AgentVersion started. Heartbeat interval: $IntervalSeconds seconds."
@@ -125,7 +125,7 @@ try {
       # Avoid logging authorization headers, response bodies, or token material.
       Write-Warning "$(Get-Date -Format o) heartbeat/rotation failed; retrying in $retryDelaySeconds seconds."
       Start-Sleep -Seconds $retryDelaySeconds
-      $retryDelaySeconds = [Math]::Min(900, [Math]::Max($IntervalSeconds, $retryDelaySeconds * 2))
+      $retryDelaySeconds = [Math]::Min(900, [Math]::Max(15, $retryDelaySeconds * 2))
     }
   }
 } finally {
