@@ -9,6 +9,9 @@ Cloud-ready starter for a unified endpoint management platform. This is a protot
 - 8-hour session expiry, logout, and admin-only user creation
 - Roles: `admin`, `operator`, and `viewer`
 - Tenant-scoped device summary, inventory, and audit queries
+- Admin-created, single-use enrollment tokens that expire after 24 hours
+- Database-backed device enrollment API and per-device opaque agent tokens
+- Authenticated agent heartbeat API with enrollment/heartbeat rate limits
 - CI tests via Node's built-in test runner
 
 ## Run in demo mode
@@ -33,6 +36,18 @@ Set these in your hosting provider's secret/environment settings, never in sourc
 On startup, tables are created if missing. Existing device/audit rows are assigned to the initial `primary` tenant during the first migration. The bootstrap admin is created only if that email is not already present in the tenant. Changing the bootstrap password environment variable does not reset an existing account's password.
 
 The app creates the initial tenant with ID `primary-tenant` and slug `primary`. Additional user accounts can be created by an authenticated admin using `POST /api/admin/users` with `email`, `password`, and `role`.
+
+## Device enrollment API (early prototype)
+
+These endpoints require PostgreSQL and are not enabled in demo mode.
+
+- An authenticated workspace admin creates a one-use token with `POST /api/admin/enrollment-tokens`.
+- A device submits `POST /api/agent/enroll` with `enrollmentToken`, `name`, `os`, and `osVersion`. The token is claimed transactionally, so it cannot be reused.
+- Enrollment returns a per-device `agentToken` once. Store it in an OS-protected secret store; never place it in source code or logs.
+- The agent sends `POST /api/agent/heartbeat` with `Authorization: Bearer <agentToken>` and an optional `agentVersion`.
+- Enrollment tokens expire after 24 hours. Agent tokens currently have no rotation/revocation endpoint, and heartbeat payloads must not contain personal files, command output, or other sensitive content.
+
+This is API groundwork only. A signed, packaged agent, platform-specific secure token storage, token rotation/revocation, replay protection, device uninstall/offboarding, and integration tests against a real PostgreSQL instance are still required. Do not deploy agents to production devices yet.
 
 ## Security boundaries
 - Database mode requires bearer authentication for inventory, summary, audit, and user administration.
