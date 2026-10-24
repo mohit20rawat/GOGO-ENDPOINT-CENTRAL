@@ -1,6 +1,6 @@
 const $ = (id) => document.getElementById(id);
 let currentDevices = [];
-let toastTimer;
+let toastTimer;\nlet accessToken = "";\nlet authRequired = false;
 
 function showToast(message) {
   const toast = $("toast");
@@ -11,7 +11,7 @@ function showToast(message) {
 }
 
 async function getJson(url) {
-  const response = await fetch(url, { headers: { Accept: "application/json" } });
+  const headers = { Accept: "application/json" };\n  if (accessToken) headers.Authorization = "Bearer " + accessToken;\n  const response = await fetch(url, { headers });\n  if (response.status === 401 && authRequired) showAuthGate("Your session expired. Please sign in again.");
   if (!response.ok) throw new Error("Request failed (" + response.status + ")");
   return response.json();
 }
@@ -108,4 +108,50 @@ $("exportButton").addEventListener("click", () => {
   showToast("Inventory CSV exported");
 });
 
-loadDashboard(false);
+async function initializeAuth() {
+  try {
+    const ready = await getJson("/api/ready");
+    authRequired = Boolean(ready.authRequired);
+    if (authRequired) {
+      showAuthGate("Sign in with your workspace administrator account.");
+      return;
+    }
+    loadDashboard(false);
+  } catch (_error) {
+    showToast("Server readiness check failed.");
+  }
+}
+function showAuthGate(message) {
+  const gate = $("authGate");
+  if (!gate) return;
+  gate.hidden = false;
+  $("authMessage").textContent = message;
+  const shell = document.querySelector(".app-shell");
+  if (shell) shell.setAttribute("aria-hidden", "true");
+}
+$("loginForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const button = $("loginButton");
+  button.disabled = true;
+  $("authMessage").textContent = "Signing in…";
+  try {
+    const response = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ email: $("loginEmail").value, password: $("loginPassword").value })
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Sign-in failed.");
+    accessToken = data.token;
+    $("loginPassword").value = "";
+    $("authGate").hidden = true;
+    const shell = document.querySelector(".app-shell");
+    if (shell) shell.removeAttribute("aria-hidden");
+    loadDashboard(false);
+  } catch (error) {
+    $("authMessage").textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+});
+initializeAuth();
