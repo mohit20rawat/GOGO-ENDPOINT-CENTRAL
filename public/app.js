@@ -101,8 +101,7 @@ $("exportButton").addEventListener("click", () => {
     const text = [device.id, device.name, device.user, device.department, device.os].join(" ").toLowerCase();
     return statusMatches && (!query || text.includes(query));
   }).forEach((device) => rows.push([device.id, device.name, device.user, device.department, device.os, device.version, device.status, device.risk]));
-  const csv = rows.map((row) => row.map((value) => '"' + String(value).replace(/"/g, '""') + '"').join(",")).join("\r
-");
+  const csv = rows.map((row) => row.map((value) => '"' + String(value).replace(/"/g, '""') + '"').join(",")).join("\r\n");
   const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
   const link = document.createElement("a");
   link.href = url;
