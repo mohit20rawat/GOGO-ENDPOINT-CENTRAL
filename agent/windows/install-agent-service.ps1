@@ -62,13 +62,13 @@ $binPath = '"' + $exePath + '"'
 $startMode = if ($stateFilesExist) { "auto" } else { "demand" }
 
 if (-not $existingService) {
-    & sc.exe create $serviceName "binPath= $binPath" "start= $startMode" 'obj= "NT AUTHORITY\LocalService"' $('DisplayName= "' + $serviceDisplayName + '"' )
+    & sc.exe create $serviceName "binPath=" $binPath "start=" $startMode "obj=" "NT AUTHORITY\LocalService" "DisplayName=" $serviceDisplayName
     if ($LASTEXITCODE -ne 0) {
         throw "Failed to create service."
     }
 }
 else {
-    & sc.exe config $serviceName "binPath= $binPath" "start= $startMode" 'obj= "NT AUTHORITY\LocalService"' $('DisplayName= "' + $serviceDisplayName + '"' )
+    & sc.exe config $serviceName "binPath=" $binPath "start=" $startMode "obj=" "NT AUTHORITY\LocalService" "DisplayName=" $serviceDisplayName
     if ($LASTEXITCODE -ne 0) {
         throw "Failed to update service configuration."
     }
