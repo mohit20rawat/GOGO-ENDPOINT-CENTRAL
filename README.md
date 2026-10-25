@@ -12,7 +12,8 @@ Cloud-ready starter for a unified endpoint management platform. This is a protot
 - Admin-created, single-use enrollment tokens that expire after 24 hours
 - Database-backed device enrollment API and per-device opaque agent tokens
 - Authenticated agent heartbeat API with enrollment/heartbeat rate limits
-- Persists the reported endpoint agent version during heartbeats for operational inventory checks
+- Persists the reported endpoint agent version and allow-listed hardware inventory (manufacturer/model, CPU, RAM, system-drive capacity/free space) during heartbeats
+- Windows service agent collects hardware details every 15 minutes and sends them over authenticated HTTPS; hardware collection is best-effort and does not include serial numbers
 - Experimental Windows PowerShell enrollment/heartbeat script at `agent/windows/GogoEndpointAgent.ps1`; stores its agent token using current-user Windows DPAPI
 - Device inventory API and dashboard expose the reported agent version and last heartbeat time
 - Admin-only agent credential revocation with an audit event
@@ -54,7 +55,7 @@ These endpoints require PostgreSQL and are not enabled in demo mode.
 - An authenticated workspace admin creates a one-use token with `POST /api/admin/enrollment-tokens`.
 - A device submits `POST /api/agent/enroll` with `enrollmentToken`, `name`, `os`, and `osVersion`. The token is claimed transactionally, so it cannot be reused.
 - Enrollment returns a per-device `agentToken` once. Store it in an OS-protected secret store; never place it in source code or logs.
-- The agent sends `POST /api/agent/heartbeat` with `Authorization: Bearer <agentToken>` and an optional `agentVersion`.
+- The agent sends `POST /api/agent/heartbeat` with `Authorization: Bearer <agentToken>`, an optional `agentVersion`, and optional allow-listed `hardwareInventory` fields. The Windows service reports manufacturer/model, CPU model/core counts, total RAM, and system-drive capacity/free space. Hardware inventory is refreshed every 15 minutes, excludes hardware serial numbers, and is not a remote-control channel.
 - To rotate its credential, the authenticated agent sends `POST /api/agent/rotate-token` with its current bearer token. The response contains the replacement `agentToken` once; the old token is invalid immediately after the transaction commits. Persist the replacement securely before continuing normal heartbeats.
 - Enrollment tokens expire after 24 hours. Admins can revoke a device's agent credential with `POST /api/admin/devices/:deviceId/revoke-agent`; the device is marked offline and the action is audited. Re-enrollment is required afterward.
 
