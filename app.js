@@ -86,20 +86,8 @@ async function initializeDatabaseSchema(pool, env = process.env) {
   await pool.query("UPDATE devices SET tenant_id = $1 WHERE tenant_id IS NULL", [tenantId]);
   await pool.query("UPDATE audit_events SET tenant_id = $1 WHERE tenant_id IS NULL", [tenantId]);
 
-  const deviceCount = await pool.query("SELECT COUNT(*)::int AS count FROM devices WHERE tenant_id = $1", [tenantId]);
-  if (deviceCount.rows[0].count === 0) {
-    for (const d of demoDevices) await pool.query(
-      "INSERT INTO devices (id,name,assigned_user,department,os,os_version,status,risk,last_seen,tenant_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT (id) DO NOTHING",
-      [d.id,d.name,d.user,d.department,d.os,d.version,d.status,d.risk,d.lastSeen,tenantId]
-    );
-  }
-  const auditCount = await pool.query("SELECT COUNT(*)::int AS count FROM audit_events WHERE tenant_id = $1", [tenantId]);
-  if (auditCount.rows[0].count === 0) {
-    for (const e of demoAuditEvents) await pool.query(
-      "INSERT INTO audit_events (id,action,actor,event_time,result,tenant_id) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (id) DO NOTHING",
-      [e.id,e.action,e.actor,e.time,e.result,tenantId]
-    );
-  }
+  // Database-backed tenants start with real inventory only. Demo fixtures are used exclusively
+  // by the in-memory demo mode below; never seed synthetic devices or audit events into PostgreSQL.
 
   if (env.BOOTSTRAP_ADMIN_EMAIL && env.BOOTSTRAP_ADMIN_PASSWORD) {
     const email = env.BOOTSTRAP_ADMIN_EMAIL.trim().toLowerCase();
