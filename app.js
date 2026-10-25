@@ -152,6 +152,9 @@ function mapAuditEvent(row) { return { id: row.id, action: row.action, actor: ro
 
 function createApp({ pool = defaultPool } = {}) {
   const app = express();
+  // Render terminates TLS and forwards requests through one trusted proxy hop.
+  // This lets express-rate-limit derive client IPs correctly without trusting arbitrary forwarded chains.
+  app.set("trust proxy", 1);
   app.disable("x-powered-by");
   app.use(helmet());
   app.use(express.json({ limit: "100kb" }));
