@@ -156,17 +156,26 @@ test("PostgreSQL enrollment, heartbeat, token rotation, revocation, and audit fl
     });
     assert.equal(reusedEnrollmentResponse.status, 401);
 
-    const heartbeat = (token) => fetch(base + "/api/agent/heartbeat", {
+    const heartbeat = (token, payload = { agentVersion: "integration-test" }) => fetch(base + "/api/agent/heartbeat", {
       method: "POST",
       headers: { ...json, authorization: "Bearer " + token },
-      body: JSON.stringify({ agentVersion: "integration-test" })
+      body: JSON.stringify(payload)
     });
-    const heartbeatResponse = await heartbeat(device.agentToken);
+    const hardwareInventory = {
+      manufacturer: "Test Manufacturer", model: "Test Model", cpuModel: "Test CPU",
+      cpuCores: 8, logicalProcessors: 16, memoryTotalBytes: 17179869184,
+      systemDrive: "C:", systemDriveTotalBytes: 512000000000, systemDriveFreeBytes: 128000000000,
+      collectedAt: new Date().toISOString()
+    };
+    const heartbeatResponse = await heartbeat(device.agentToken, { agentVersion: "integration-test", hardwareInventory });
     assert.equal(heartbeatResponse.status, 200);
     const heartbeatBody = await heartbeatResponse.json();
     assert.equal(heartbeatBody.agentVersion, "integration-test");
-    const storedAgentVersion = await pool.query("SELECT agent_version FROM devices WHERE id=$1", [device.deviceId]);
+    assert.equal(heartbeatBody.hardwareInventoryReceived, true);
+    const storedAgentVersion = await pool.query("SELECT agent_version,hardware_inventory FROM devices WHERE id=$1", [device.deviceId]);
     assert.equal(storedAgentVersion.rows[0].agent_version, "integration-test");
+    assert.equal(storedAgentVersion.rows[0].hardware_inventory.cpuModel, "Test CPU");
+    assert.equal((await heartbeat(device.agentToken, { agentVersion: "integration-test", hardwareInventory: { cpuCores: -2 } })).status, 400);
     const inventoryAfterHeartbeat = await fetch(base + "/api/devices", {
       headers: { Authorization: "Bearer " + login.token }
     });
@@ -174,6 +183,7 @@ test("PostgreSQL enrollment, heartbeat, token rotation, revocation, and audit fl
     const inventoryBody = await inventoryAfterHeartbeat.json();
     const inventoryDevice = inventoryBody.items.find(item => item.id === device.deviceId);
     assert.equal(inventoryDevice.agentVersion, "integration-test");
+    assert.equal(inventoryDevice.hardwareInventory.cpuModel, "Test CPU");
     assert.ok(inventoryDevice.lastSeen);
 
     const rotateResponse = await fetch(base + "/api/agent/rotate-token", {
