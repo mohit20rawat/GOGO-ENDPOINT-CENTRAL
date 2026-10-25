@@ -44,13 +44,13 @@ New-Item -ItemType Directory -Path $installPath -Force | Out-Null
 Copy-Item -Path (Join-Path $publishPath "*") -Destination $installPath -Recurse -Force
 
 # The service runs as LocalService, so it needs read/execute access to the binaries.
-& icacls.exe $installPath /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' '*S-1-5-19:(OI)(CI)RX' /T /C | Out-Null
+& icacls.exe $installPath /grant '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' '*S-1-5-19:(OI)(CI)RX' /T /C | Out-Null
 if ($LASTEXITCODE -ne 0) {
     throw "Failed to secure installation directory ACLs."
 }
 
 New-Item -ItemType Directory -Path $stateDirectory -Force | Out-Null
-& icacls.exe $stateDirectory /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' | Out-Null
+& icacls.exe $stateDirectory /grant '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' | Out-Null
 if ($LASTEXITCODE -ne 0) {
     throw "Failed to secure state directory ACLs."
 }
@@ -62,7 +62,7 @@ $binPath = '"' + $exePath + '"'
 $startMode = if ($stateFilesExist) { "auto" } else { "demand" }
 
 if (-not $existingService) {
-    & sc.exe create $serviceName "binPath= $binPath" "start= $startMode" 'obj= "NT AUTHORITY\LocalService"' "DisplayName= $serviceDisplayName"
+    & sc.exe create $serviceName "binPath= $binPath" "start= $startMode" 'obj= "NT AUTHORITY\LocalService"' $('DisplayName= "' + $serviceDisplayName + '"' )
     if ($LASTEXITCODE -ne 0) {
         throw "Failed to create service."
     }
