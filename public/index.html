@@ -47,7 +47,7 @@
         <div><p class="eyebrow">UNIFIED ENDPOINT MANAGEMENT</p><h1>Fleet overview</h1><p class="subheading">A clear view of your devices, their status, and potential risks.</p></div>
         <div class="heading-actions"><button class="button button-secondary" id="refreshButton" type="button">↻ Refresh data</button><button class="button button-primary" id="exportButton" type="button">↓ Export CSV</button></div>
       </section>
-      <div class="notice"><span class="notice-icon">i</span><div><strong>Prototype workspace</strong><p>This dashboard uses sample data only. No real devices are enrolled or managed yet.</p></div></div>
+      <div class="notice"><span class="notice-icon">i</span><div><strong>Prototype workspace</strong><p>Connected workspaces show enrolled endpoints and reported hardware. Demo mode uses sample data only.</p></div></div>
 
       <section class="metrics" aria-label="Fleet summary">
         <article class="metric-card"><div class="metric-top"><span>Total devices</span><span class="metric-icon blue">▣</span></div><div class="metric-value" id="totalDevices">--</div><div class="metric-foot">Registered in demo inventory</div></article>
@@ -58,9 +58,9 @@
 
       <section class="content-grid">
         <article class="panel device-panel" id="devices">
-          <div class="panel-heading"><div><h2>Device inventory</h2><p>Registered endpoints, agent versions, and reporting freshness</p></div><span class="count-badge" id="deviceCount">-- devices</span></div>
+          <div class="panel-heading"><div><h2>Device inventory</h2><p>Registered endpoints, hardware details, agent versions, and reporting freshness</p></div><span class="count-badge" id="deviceCount">-- devices</span></div>
           <div class="filters"><label class="search-box"><span>⌕</span><input id="searchInput" type="search" placeholder="Search devices, users, departments..." aria-label="Search devices"></label><select id="statusFilter" aria-label="Filter by device status"><option value="">All statuses</option><option value="online">Online</option><option value="offline">Offline</option></select></div>
-          <div class="table-wrap"><table><thead><tr><th>DEVICE</th><th>ASSIGNED USER</th><th>OS</th><th>AGENT</th><th>LAST HEARTBEAT</th><th>STATUS</th><th>RISK</th></tr></thead><tbody id="deviceRows"><tr><td colspan="7" class="empty-state">Loading inventory…</td></tr></tbody></table></div>
+          <div class="table-wrap"><table><thead><tr><th>DEVICE</th><th>ASSIGNED USER</th><th>OS</th><th>HARDWARE</th><th>AGENT</th><th>LAST HEARTBEAT</th><th>STATUS</th><th>RISK</th></tr></thead><tbody id="deviceRows"><tr><td colspan="8" class="empty-state">Loading inventory…</td></tr></tbody></table></div>
           <div class="panel-footer"><span id="resultsText">Loading devices</span><span>Agent reporting status</span></div>
         </article>
         <aside class="panel activity-panel" id="activity">
