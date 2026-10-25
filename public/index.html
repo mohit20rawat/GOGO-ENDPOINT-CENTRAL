@@ -9,6 +9,20 @@
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
+  <section id="authGate" class="auth-gate" hidden aria-labelledby="authTitle">
+    <form id="loginForm" class="auth-card">
+      <div class="brand auth-brand"><span class="brand-mark">G</span><div><strong>GOGO</strong><small>ENDPOINT CENTRAL</small></div></div>
+      <p class="eyebrow">SECURE WORKSPACE</p>
+      <h1 id="authTitle">Sign in</h1>
+      <p class="subheading">Use your workspace administrator account to continue.</p>
+      <label for="loginEmail">Email address</label>
+      <input id="loginEmail" name="email" type="email" autocomplete="username" required maxlength="254">
+      <label for="loginPassword">Password</label>
+      <input id="loginPassword" name="password" type="password" autocomplete="current-password" required maxlength="1024">
+      <button id="loginButton" class="button button-primary" type="submit">Sign in securely</button>
+      <p id="authMessage" class="auth-message" role="status" aria-live="polite">Checking workspace…</p>
+    </form>
+  </section>
   <div class="app-shell">
     <aside class="sidebar">
       <div class="brand"><span class="brand-mark">G</span><div><strong>GOGO</strong><small>ENDPOINT CENTRAL</small></div></div>
@@ -27,13 +41,13 @@
     <main class="main">
       <header class="topbar">
         <div class="breadcrumb">Workspace <span>/</span> <strong>Overview</strong></div>
-        <div class="topbar-right"><span class="demo-pill">DEMO DATA</span><div class="avatar" aria-label="Demo administrator">DA</div></div>
+        <div class="topbar-right"><span class="demo-pill" id="workspaceMode">DEMO DATA</span><button class="button button-secondary" id="logoutButton" type="button" hidden>Sign out</button><div class="avatar" id="userAvatar" aria-label="Workspace user">G</div></div>
       </header>
       <section class="page-heading" id="overview">
         <div><p class="eyebrow">UNIFIED ENDPOINT MANAGEMENT</p><h1>Fleet overview</h1><p class="subheading">A clear view of your devices, their status, and potential risks.</p></div>
         <div class="heading-actions"><button class="button button-secondary" id="refreshButton" type="button">↻ Refresh data</button><button class="button button-primary" id="exportButton" type="button">↓ Export CSV</button></div>
       </section>
-      <div class="notice"><span class="notice-icon">i</span><div><strong>Prototype workspace</strong><p>This dashboard uses sample data only. No real devices are enrolled or managed yet.</p></div></div>
+      <div class="notice"><span class="notice-icon">i</span><div><strong>Prototype workspace</strong><p>Connected workspaces show enrolled endpoints and reported hardware. Demo mode uses sample data only.</p></div></div>
 
       <section class="metrics" aria-label="Fleet summary">
         <article class="metric-card"><div class="metric-top"><span>Total devices</span><span class="metric-icon blue">▣</span></div><div class="metric-value" id="totalDevices">--</div><div class="metric-foot">Registered in demo inventory</div></article>
@@ -44,10 +58,10 @@
 
       <section class="content-grid">
         <article class="panel device-panel" id="devices">
-          <div class="panel-heading"><div><h2>Device inventory</h2><p>Sample assets across your organization</p></div><span class="count-badge" id="deviceCount">-- devices</span></div>
+          <div class="panel-heading"><div><h2>Device inventory</h2><p>Registered endpoints, hardware details, agent versions, and reporting freshness</p></div><span class="count-badge" id="deviceCount">-- devices</span></div>
           <div class="filters"><label class="search-box"><span>⌕</span><input id="searchInput" type="search" placeholder="Search devices, users, departments..." aria-label="Search devices"></label><select id="statusFilter" aria-label="Filter by device status"><option value="">All statuses</option><option value="online">Online</option><option value="offline">Offline</option></select></div>
-          <div class="table-wrap"><table><thead><tr><th>DEVICE</th><th>ASSIGNED USER</th><th>OS</th><th>STATUS</th><th>RISK</th></tr></thead><tbody id="deviceRows"><tr><td colspan="5" class="empty-state">Loading inventory…</td></tr></tbody></table></div>
-          <div class="panel-footer"><span id="resultsText">Loading devices</span><span>Sample inventory</span></div>
+          <div class="table-wrap"><table><thead><tr><th>DEVICE</th><th>ASSIGNED USER</th><th>OS</th><th>HARDWARE</th><th>AGENT</th><th>LAST HEARTBEAT</th><th>STATUS</th><th>RISK</th></tr></thead><tbody id="deviceRows"><tr><td colspan="8" class="empty-state">Loading inventory…</td></tr></tbody></table></div>
+          <div class="panel-footer"><span id="resultsText">Loading devices</span><span>Agent reporting status</span></div>
         </article>
         <aside class="panel activity-panel" id="activity">
           <div class="panel-heading"><div><h2>Recent activity</h2><p>Example audit events</p></div><span class="activity-icon">↻</span></div>
@@ -56,11 +70,12 @@
         </aside>
       </section>
 
-      <section class="roadmap" id="roadmap"><div><p class="eyebrow">WHAT'S NEXT</p><h2>Building the control plane, one safe step at a time.</h2><p>Next milestones: authentication, persistent inventory, device enrollment, and role-based access.</p></div><div class="roadmap-mark">✳</div></section>
+      <section class="roadmap" id="roadmap"><div><p class="eyebrow">WHAT'S NEXT</p><h2>Building the control plane, one safe step at a time.</h2><p>Next milestones: device enrollment, authenticated agent heartbeat, patch management, and AI-assisted recommendations.</p></div><div class="roadmap-mark">✳</div></section>
       <footer><span>© 2026 GOGO Endpoint Central</span><span>Prototype · No production device actions enabled</span></footer>
       <div id="toast" class="toast" role="status" aria-live="polite"></div>
     </main>
   </div>
   <script src="/app.js" defer></script>
+  <script src="/enrollment.js" defer></script>
 </body>
 </html>
