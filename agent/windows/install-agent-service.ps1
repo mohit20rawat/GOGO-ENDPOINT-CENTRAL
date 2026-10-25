@@ -68,7 +68,7 @@ if (-not $existingService) {
     }
 }
 else {
-    & sc.exe config $serviceName "binPath= $binPath" "start= $startMode" 'obj= "NT AUTHORITY\LocalService"' "DisplayName= $serviceDisplayName"
+    & sc.exe config $serviceName "binPath= $binPath" "start= $startMode" 'obj= "NT AUTHORITY\LocalService"' $('DisplayName= "' + $serviceDisplayName + '"' )
     if ($LASTEXITCODE -ne 0) {
         throw "Failed to update service configuration."
     }
