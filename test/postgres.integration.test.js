@@ -185,6 +185,54 @@ test("PostgreSQL enrollment, heartbeat, token rotation, revocation, and audit fl
     assert.equal(inventoryDevice.agentVersion, "integration-test");
     assert.equal(inventoryDevice.hardwareInventory.cpuModel, "Test CPU");
     assert.ok(inventoryDevice.lastSeen);
+    assert.equal(inventoryDevice.status, "online");
+
+    const summaryBeforeOfflineResponse = await fetch(base + "/api/summary", {
+      headers: adminHeaders
+    });
+    assert.equal(summaryBeforeOfflineResponse.status, 200);
+    const summaryBeforeOffline = await summaryBeforeOfflineResponse.json();
+
+    const agedDevice = await pool.query(
+      "UPDATE devices SET updated_at = NOW() - INTERVAL '6 minutes' WHERE id = $1 RETURNING id",
+      [device.deviceId]
+    );
+    assert.equal(agedDevice.rowCount, 1);
+
+    const offlineInventoryResponse = await fetch(base + "/api/devices?q=INTEGRATION-WIN-01", {
+      headers: adminHeaders
+    });
+    assert.equal(offlineInventoryResponse.status, 200);
+    const offlineInventory = await offlineInventoryResponse.json();
+    const offlineDevice = offlineInventory.items.find(item => item.id === device.deviceId);
+    assert.equal(offlineDevice.status, "offline");
+
+    const offlineSummaryResponse = await fetch(base + "/api/summary", {
+      headers: adminHeaders
+    });
+    assert.equal(offlineSummaryResponse.status, 200);
+    const offlineSummary = await offlineSummaryResponse.json();
+    assert.equal(offlineSummary.offlineDevices, summaryBeforeOffline.offlineDevices + 1);
+    assert.equal(offlineSummary.onlineDevices, summaryBeforeOffline.onlineDevices - 1);
+
+    const recoveryHeartbeatResponse = await heartbeat(device.agentToken);
+    assert.equal(recoveryHeartbeatResponse.status, 200);
+
+    const recoveredInventoryResponse = await fetch(base + "/api/devices?q=INTEGRATION-WIN-01", {
+      headers: adminHeaders
+    });
+    assert.equal(recoveredInventoryResponse.status, 200);
+    const recoveredInventory = await recoveredInventoryResponse.json();
+    const recoveredDevice = recoveredInventory.items.find(item => item.id === device.deviceId);
+    assert.equal(recoveredDevice.status, "online");
+
+    const recoveredSummaryResponse = await fetch(base + "/api/summary", {
+      headers: adminHeaders
+    });
+    assert.equal(recoveredSummaryResponse.status, 200);
+    const recoveredSummary = await recoveredSummaryResponse.json();
+    assert.equal(recoveredSummary.offlineDevices, summaryBeforeOffline.offlineDevices);
+    assert.equal(recoveredSummary.onlineDevices, summaryBeforeOffline.onlineDevices);
 
     const rotateResponse = await fetch(base + "/api/agent/rotate-token", {
       method: "POST", headers: { authorization: "Bearer " + device.agentToken }
