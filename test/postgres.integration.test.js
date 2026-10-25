@@ -304,4 +304,3 @@ test("PostgreSQL enrollment, heartbeat, token rotation, revocation, and audit fl
     await pool.end();
   }
 });
-

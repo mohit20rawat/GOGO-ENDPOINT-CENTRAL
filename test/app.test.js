@@ -122,4 +122,3 @@ test("agent credential revocation is disabled without PostgreSQL", async () => w
   assert.equal(response.status,503);
   assert.match((await response.json()).error,/requires PostgreSQL/);
 }));
-

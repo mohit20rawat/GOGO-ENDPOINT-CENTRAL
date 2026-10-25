@@ -553,4 +553,3 @@ if (require.main === module) {
   }).catch(error => { console.error("Startup failed:",error.message); process.exit(1); });
 }
 module.exports = { createApp, initializeDatabase, reconcileOfflineAlerts, startOfflineAlertMonitor };
-
