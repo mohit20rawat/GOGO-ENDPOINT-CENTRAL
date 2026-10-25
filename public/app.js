@@ -26,7 +26,7 @@ function renderDevices(items) {
   $("deviceCount").textContent = items.length + (items.length === 1 ? " device" : " devices");
   $("resultsText").textContent = "Showing " + items.length + " " + (items.length === 1 ? "device" : "devices");
   if (!items.length) {
-    rows.innerHTML = '<tr><td colspan="7" class="empty-state">No devices match your search.</td></tr>';
+    rows.innerHTML = '<tr><td colspan="8" class="empty-state">No devices match your search.</td></tr>';
     return;
   }
   rows.innerHTML = items.map((device) => {
@@ -35,11 +35,27 @@ function renderDevices(items) {
     return '<tr><td><div class="device-name"><span class="device-glyph">▣</span><div><strong>' + escapeHtml(device.name) + '</strong><small>' + escapeHtml(device.id) + '</small></div></div></td>' +
       '<td><span class="user-name">' + escapeHtml(device.user) + '</span><br><small>' + escapeHtml(device.department) + '</small></td>' +
       '<td>' + escapeHtml(device.os) + '<br><small>' + escapeHtml(device.version) + '</small></td>' +
+      '<td>' + hardwareSummary(device.hardwareInventory) + '</td>' +
       '<td>' + (device.agentVersion ? '<span class="agent-version">' + escapeHtml(device.agentVersion) + '</span>' : '<span class="muted-value">Not reported</span>') + '</td>' +
       '<td><span class="heartbeat-time">' + escapeHtml(formatLastSeen(device.lastSeen)) + '</span></td>' +
       '<td><span class="pill ' + status + '">' + status + '</span></td>' +
       '<td><span class="pill ' + risk + '">' + risk + '</span></td></tr>';
   }).join("");
+}
+
+function formatBytes(value) {
+  if (!Number.isFinite(value) || value < 0) return "";
+  const units = ["B", "KB", "GB", "TB"];
+  let size = value, unit = 0;
+  while (size >= 1024 && unit < units.length - 1) { size /= 1024; unit++; }
+  return (unit === 0 ? String(Math.round(size)) : size.toFixed(1)) + " " + units[unit];
+}
+function hardwareSummary(inventory) {
+  if (!inventory) return '<span class="muted-value">Not reported</span>';
+  const cpu = inventory.cpuModel || inventory.model || "Hardware reported";
+  const memory = formatBytes(inventory.memoryTotalBytes);
+  const disk = inventory.systemDriveTotalBytes == null ? "" : formatBytes(inventory.systemDriveFreeBytes) + " free / " + formatBytes(inventory.systemDriveTotalBytes);
+  return '<span title="' + escapeHtml(cpu) + '">' + escapeHtml(cpu) + '</span><br><small>' + escapeHtml([memory, disk].filter(Boolean).join(" · ") || "Details available") + '</small>';
 }
 
 function formatLastSeen(value) {
@@ -83,7 +99,7 @@ async function loadDashboard(showMessage) {
     if (showMessage) showToast("Workspace data refreshed");
   } catch (error) {
     showToast("Could not load dashboard. Check the server and retry.");
-    $("deviceRows").innerHTML = '<tr><td colspan="7" class="empty-state">Dashboard data is unavailable.</td></tr>';
+    $("deviceRows").innerHTML = '<tr><td colspan="8" class="empty-state">Dashboard data is unavailable.</td></tr>';
   }
 }
 
@@ -102,14 +118,14 @@ $("searchInput").addEventListener("input", applyFilters);
 $("statusFilter").addEventListener("change", applyFilters);
 $("refreshButton").addEventListener("click", () => loadDashboard(true));
 $("exportButton").addEventListener("click", () => {
-  const rows = [["Device ID", "Device", "Assigned user", "Department", "OS", "Version", "Status", "Risk"]];
+  const rows = [["Device ID", "Device", "Assigned user", "Department", "OS", "Version", "CPU", "RAM bytes", "System drive total bytes", "System drive free bytes", "Status", "Risk"]];
   const query = $("searchInput").value.trim().toLowerCase();
   const status = $("statusFilter").value;
   currentDevices.filter((device) => {
     const statusMatches = !status || device.status === status;
     const text = [device.id, device.name, device.user, device.department, device.os].join(" ").toLowerCase();
     return statusMatches && (!query || text.includes(query));
-  }).forEach((device) => rows.push([device.id, device.name, device.user, device.department, device.os, device.version, device.status, device.risk]));
+  }).forEach((device) => rows.push([device.id, device.name, device.user, device.department, device.os, device.version, device.hardwareInventory?.cpuModel || "", device.hardwareInventory?.memoryTotalBytes ?? "", device.hardwareInventory?.systemDriveTotalBytes ?? "", device.hardwareInventory?.systemDriveFreeBytes ?? "", device.status, device.risk]));
   const csv = rows.map((row) => row.map((value) => '"' + String(value).replace(/"/g, '""') + '"').join(",")).join("\r\n");
   const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
   const link = document.createElement("a");
