@@ -58,6 +58,7 @@ async function initializeDatabaseSchema(pool, env = process.env) {
   )`);
   await pool.query("ALTER TABLE devices ADD COLUMN IF NOT EXISTS tenant_id TEXT");
   await pool.query("ALTER TABLE devices ADD COLUMN IF NOT EXISTS agent_version TEXT");
+  await pool.query("ALTER TABLE devices ADD COLUMN IF NOT EXISTS hardware_inventory JSONB");
   await pool.query(`CREATE TABLE IF NOT EXISTS audit_events (
     id TEXT PRIMARY KEY, action TEXT NOT NULL, actor TEXT NOT NULL,
     event_time TEXT NOT NULL, result TEXT NOT NULL CHECK (result IN ('success','failure'))
@@ -133,8 +134,32 @@ async function initializeDatabase(pool = defaultPool, env = process.env) {
   }
 }
 
+function normalizeHardwareInventory(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const textField = (key, max = 160) => {
+    if (value[key] == null) return null;
+    if (typeof value[key] !== "string" || value[key].length > max || /[\u0000-\u001f]/.test(value[key])) return undefined;
+    return value[key].trim() || null;
+  };
+  const numberField = (key, min, max) => {
+    if (value[key] == null) return null;
+    if (!Number.isSafeInteger(value[key]) || value[key] < min || value[key] > max) return undefined;
+    return value[key];
+  };
+  const inventory = {
+    manufacturer: textField("manufacturer"), model: textField("model"), cpuModel: textField("cpuModel"),
+    cpuCores: numberField("cpuCores", 1, 512), logicalProcessors: numberField("logicalProcessors", 1, 1024),
+    memoryTotalBytes: numberField("memoryTotalBytes", 0, 16 * 1024 ** 4), systemDrive: textField("systemDrive", 16),
+    systemDriveTotalBytes: numberField("systemDriveTotalBytes", 0, 16 * 1024 ** 4),
+    systemDriveFreeBytes: numberField("systemDriveFreeBytes", 0, 16 * 1024 ** 4), collectedAt: textField("collectedAt", 40)
+  };
+  if (Object.values(inventory).some(item => item === undefined)) return null;
+  if (inventory.collectedAt && Number.isNaN(Date.parse(inventory.collectedAt))) return null;
+  if (inventory.systemDriveFreeBytes != null && inventory.systemDriveTotalBytes != null && inventory.systemDriveFreeBytes > inventory.systemDriveTotalBytes) return null;
+  return Object.fromEntries(Object.entries(inventory).filter(([, item]) => item !== null));
+}
 function mapDevice(row) {
-  return { id: row.id, name: row.name, user: row.assigned_user, department: row.department, os: row.os, version: row.os_version, status: row.status, risk: row.risk, lastSeen: row.last_seen, agentVersion: row.agent_version || null };
+  return { id: row.id, name: row.name, user: row.assigned_user, department: row.department, os: row.os, version: row.os_version, status: row.status, risk: row.risk, lastSeen: row.last_seen, agentVersion: row.agent_version || null, hardwareInventory: row.hardware_inventory || null };
 }
 function mapAuditEvent(row) { return { id: row.id, action: row.action, actor: row.actor, time: row.event_time, result: row.result }; }
 
@@ -354,14 +379,17 @@ function createApp({ pool = defaultPool } = {}) {
     const token = header.startsWith("Bearer ") ? header.slice(7) : "";
     if (!token || token.length > 200) return res.status(401).json({ error:"Agent authentication required." });
     const agentVersion = typeof req.body.agentVersion === "string" ? req.body.agentVersion.slice(0,40) : null;
+    const inventoryProvided = Object.prototype.hasOwnProperty.call(req.body, "hardwareInventory") && req.body.hardwareInventory != null;
+    const hardwareInventory = inventoryProvided ? normalizeHardwareInventory(req.body.hardwareInventory) : null;
+    if (inventoryProvided && !hardwareInventory) return res.status(400).json({ error:"hardwareInventory contains invalid or unsupported fields." });
     try {
       const result = await pool.query(
-        "UPDATE devices d SET status='online',last_seen=NOW()::text,updated_at=NOW(),agent_version=COALESCE($2,d.agent_version) FROM device_agent_tokens t WHERE t.token_hash=$1 AND t.device_id=d.id AND t.tenant_id=d.tenant_id RETURNING d.id,d.tenant_id,d.agent_version",
-        [hashToken(token),agentVersion]
+        "UPDATE devices d SET status='online',last_seen=NOW()::text,updated_at=NOW(),agent_version=COALESCE($2,d.agent_version),hardware_inventory=COALESCE($3::jsonb,d.hardware_inventory) FROM device_agent_tokens t WHERE t.token_hash=$1 AND t.device_id=d.id AND t.tenant_id=d.tenant_id RETURNING d.id,d.tenant_id,d.agent_version,d.hardware_inventory",
+        [hashToken(token),agentVersion,hardwareInventory ? JSON.stringify(hardwareInventory) : null]
       );
       if (!result.rowCount) return res.status(401).json({ error:"Agent token is invalid." });
       await pool.query("UPDATE device_agent_tokens SET last_used_at=NOW() WHERE token_hash=$1",[hashToken(token)]);
-      return res.json({ ok:true, deviceId:result.rows[0].id, receivedAt:new Date().toISOString(), agentVersion:result.rows[0].agent_version });
+      return res.json({ ok:true, deviceId:result.rows[0].id, receivedAt:new Date().toISOString(), agentVersion:result.rows[0].agent_version, hardwareInventoryReceived:Boolean(result.rows[0].hardware_inventory) });
     } catch (error) { return next(error); }
   });
 
@@ -390,7 +418,7 @@ function createApp({ pool = defaultPool } = {}) {
           const p = "$" + values.length;
           clauses.push("(id ILIKE " + p + " OR name ILIKE " + p + " OR assigned_user ILIKE " + p + " OR department ILIKE " + p + " OR os ILIKE " + p + ")");
         }
-        const result = await pool.query("SELECT id,name,assigned_user,department,os,os_version,agent_version,CASE WHEN status='online' AND updated_at < NOW() - INTERVAL '5 minutes' THEN 'offline' ELSE status END AS status,risk,CASE WHEN status='online' AND updated_at < NOW() - INTERVAL '5 minutes' THEN updated_at::text ELSE last_seen END AS last_seen FROM devices WHERE " + clauses.join(" AND ") + " ORDER BY name",values);
+        const result = await pool.query("SELECT id,name,assigned_user,department,os,os_version,agent_version,hardware_inventory,CASE WHEN status='online' AND updated_at < NOW() - INTERVAL '5 minutes' THEN 'offline' ELSE status END AS status,risk,CASE WHEN status='online' AND updated_at < NOW() - INTERVAL '5 minutes' THEN updated_at::text ELSE last_seen END AS last_seen FROM devices WHERE " + clauses.join(" AND ") + " ORDER BY name",values);
         const items = result.rows.map(mapDevice);
         return res.json({ items,total:items.length,mode:"database" });
       }
