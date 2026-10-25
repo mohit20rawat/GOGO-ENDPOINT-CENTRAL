@@ -24,7 +24,7 @@ function getIntegrationDatabaseUrl(env = process.env) {
   if (!["localhost", "127.0.0.1"].includes(parsed.hostname.toLowerCase())) {
     throw new Error("PostgreSQL integration tests only allow localhost or 127.0.0.1; hosted Render/Neon databases are forbidden.");
   }
-  const databaseName = decodeURIComponent(parsed.pathname.replace(/^\\/+/, ""));
+  const databaseName = decodeURIComponent(parsed.pathname.slice(1));
   if (databaseName !== "gogo_test") {
     throw new Error("PostgreSQL integration tests only allow the dedicated gogo_test database.");
   }
