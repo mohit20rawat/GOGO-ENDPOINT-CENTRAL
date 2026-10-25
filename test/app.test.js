@@ -20,6 +20,12 @@ test("health endpoint reports service is alive", async () => withServer(async ba
   assert.equal(response.status,200);
   assert.deepEqual(await response.json(),{status:"ok",service:"gogo-endpoint-central"});
 }));
+test("demo alert API returns an empty list and validates status filters", async () => withServer(async base => {
+  const response = await fetch(base + "/api/alerts");
+  assert.equal(response.status,200);
+  assert.deepEqual(await response.json(),{items:[],total:0,mode:"demo"});
+  assert.equal((await fetch(base + "/api/alerts?status=unknown")).status,400);
+}));
 test("summary totals match the demo inventory", async () => withServer(async base => {
   const response = await fetch(base + "/api/summary");
   const summary = await response.json();
@@ -43,19 +49,19 @@ test("readiness endpoint explicitly identifies demo persistence and auth mode", 
   assert.deepEqual(await response.json(),{ready:true,mode:"demo",persistence:"in-memory",authRequired:false});
 }));
 test("database readiness requires the baseline schema and all required tables", async () => {
-  const pool = { query: async () => ({ rows: [{ baseline_applied: true, required_tables_present: true }] }) };
+  const pool = { query: async () => ({ rows: [{ schema_applied: true, required_tables_present: true }] }) };
   await withServer(async base => {
     const response = await fetch(base + "/api/ready");
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), {
       ready: true, mode: "database", persistence: "postgresql",
-      authRequired: true, schemaVersion: "001_initial_schema"
+      authRequired: true, schemaVersion: "002_offline_alerts"
     });
   }, pool);
 });
 
 test("database readiness returns 503 when schema is incomplete", async () => {
-  const pool = { query: async () => ({ rows: [{ baseline_applied: true, required_tables_present: false }] }) };
+  const pool = { query: async () => ({ rows: [{ schema_applied: true, required_tables_present: false }] }) };
   await withServer(async base => {
     const response = await fetch(base + "/api/ready");
     assert.equal(response.status, 503);
@@ -116,3 +122,4 @@ test("agent credential revocation is disabled without PostgreSQL", async () => w
   assert.equal(response.status,503);
   assert.match((await response.json()).error,/requires PostgreSQL/);
 }));
+

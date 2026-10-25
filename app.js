@@ -86,6 +86,19 @@ async function initializeDatabaseSchema(pool, env = process.env) {
   await pool.query("INSERT INTO tenants (id,name,slug) VALUES ($1,$2,$3) ON CONFLICT (id) DO NOTHING", [tenantId, tenantName, "primary"]);
   await pool.query("UPDATE devices SET tenant_id = $1 WHERE tenant_id IS NULL", [tenantId]);
   await pool.query("UPDATE audit_events SET tenant_id = $1 WHERE tenant_id IS NULL", [tenantId]);
+  await pool.query("CREATE UNIQUE INDEX IF NOT EXISTS devices_id_tenant_unique_idx ON devices (id, tenant_id)");
+  await pool.query(`CREATE TABLE IF NOT EXISTS device_alerts (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    device_id TEXT NOT NULL,
+    alert_type TEXT NOT NULL CHECK (alert_type IN ('endpoint_offline')),
+    opened_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    resolved_at TIMESTAMPTZ,
+    FOREIGN KEY (device_id, tenant_id) REFERENCES devices(id, tenant_id) ON DELETE CASCADE,
+    CHECK (resolved_at IS NULL OR resolved_at >= opened_at)
+  )`);
+  await pool.query("CREATE UNIQUE INDEX IF NOT EXISTS device_alerts_one_active_idx ON device_alerts (tenant_id, device_id, alert_type) WHERE resolved_at IS NULL");
+  await pool.query("CREATE INDEX IF NOT EXISTS device_alerts_tenant_opened_idx ON device_alerts (tenant_id, opened_at DESC)");
 
   // Database-backed tenants start with real inventory only. Demo fixtures are used exclusively
   // by the in-memory demo mode below; never seed synthetic devices or audit events into PostgreSQL.
@@ -119,6 +132,7 @@ async function initializeDatabase(pool = defaultPool, env = process.env) {
     await initializeDatabaseSchema(client, env);
     await client.query("CREATE TABLE IF NOT EXISTS schema_migrations (version TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW())");
     await client.query("INSERT INTO schema_migrations (version) VALUES ('001_initial_schema') ON CONFLICT (version) DO NOTHING");
+    await client.query("INSERT INTO schema_migrations (version) VALUES ('002_offline_alerts') ON CONFLICT (version) DO NOTHING");
     await client.query("COMMIT");
     transactionStarted = false;
   } catch (error) {
@@ -162,6 +176,51 @@ function mapDevice(row) {
   return { id: row.id, name: row.name, user: row.assigned_user, department: row.department, os: row.os, version: row.os_version, status: row.status, risk: row.risk, lastSeen: row.last_seen, agentVersion: row.agent_version || null, hardwareInventory: row.hardware_inventory || null };
 }
 function mapAuditEvent(row) { return { id: row.id, action: row.action, actor: row.actor, time: row.event_time, result: row.result }; }
+function mapDeviceAlert(row) {
+  return {
+    id: row.id,
+    deviceId: row.device_id,
+    deviceName: row.device_name,
+    type: row.alert_type,
+    status: row.resolved_at ? "resolved" : "active",
+    openedAt: row.opened_at,
+    resolvedAt: row.resolved_at
+  };
+}
+
+async function reconcileOfflineAlerts(pool) {
+  if (!pool) return [];
+  await pool.query(
+    "UPDATE device_alerts a SET resolved_at=NOW() FROM devices d " +
+    "WHERE a.device_id=d.id AND a.tenant_id=d.tenant_id AND a.alert_type='endpoint_offline' " +
+    "AND a.resolved_at IS NULL AND d.status='online' AND d.updated_at >= NOW() - INTERVAL '5 minutes'"
+  );
+  const result = await pool.query(
+    "INSERT INTO device_alerts (id,tenant_id,device_id,alert_type) " +
+    "SELECT 'alert_' || gen_random_uuid()::text,d.tenant_id,d.id,'endpoint_offline' " +
+    "FROM devices d WHERE d.tenant_id IS NOT NULL AND d.status='online' " +
+    "AND d.updated_at < NOW() - INTERVAL '5 minutes' " +
+    "ON CONFLICT (tenant_id,device_id,alert_type) WHERE resolved_at IS NULL DO NOTHING " +
+    "RETURNING id,tenant_id,device_id,alert_type,opened_at,resolved_at"
+  );
+  return result.rows;
+}
+
+function startOfflineAlertMonitor(pool, intervalMs = 60_000) {
+  if (!pool) return () => {};
+  let running = false;
+  const reconcile = async () => {
+    if (running) return;
+    running = true;
+    try { await reconcileOfflineAlerts(pool); }
+    catch (error) { console.error("Offline alert reconciliation failed:", error.message); }
+    finally { running = false; }
+  };
+  void reconcile();
+  const timer = setInterval(reconcile, intervalMs);
+  if (typeof timer.unref === "function") timer.unref();
+  return () => clearInterval(timer);
+}
 
 function createApp({ pool = defaultPool } = {}) {
   const app = express();
@@ -199,18 +258,18 @@ function createApp({ pool = defaultPool } = {}) {
     if (!pool) return res.status(200).json({ ready:true, mode:"demo", persistence:"in-memory", authRequired:false });
     try {
       const result = await pool.query(
-        "SELECT EXISTS (SELECT 1 FROM schema_migrations WHERE version = $1) AS baseline_applied, " +
+        "SELECT EXISTS (SELECT 1 FROM schema_migrations WHERE version = $1) AS schema_applied, " +
         "to_regclass('public.tenants') IS NOT NULL AND to_regclass('public.users') IS NOT NULL AND " +
         "to_regclass('public.auth_sessions') IS NOT NULL AND to_regclass('public.devices') IS NOT NULL AND " +
         "to_regclass('public.audit_events') IS NOT NULL AND to_regclass('public.enrollment_tokens') IS NOT NULL AND " +
-        "to_regclass('public.device_agent_tokens') IS NOT NULL AS required_tables_present",
-        ["001_initial_schema"]
+        "to_regclass('public.device_agent_tokens') IS NOT NULL AND to_regclass('public.device_alerts') IS NOT NULL AS required_tables_present",
+        ["002_offline_alerts"]
       );
       const row = result.rows[0];
-      if (!row.baseline_applied || !row.required_tables_present) {
+      if (!row.schema_applied || !row.required_tables_present) {
         return res.status(503).json({ ready:false, mode:"database", persistence:"postgresql", authRequired:true });
       }
-      return res.json({ ready:true, mode:"database", persistence:"postgresql", authRequired:true, schemaVersion:"001_initial_schema" });
+      return res.json({ ready:true, mode:"database", persistence:"postgresql", authRequired:true, schemaVersion:"002_offline_alerts" });
     } catch (_error) {
       return res.status(503).json({ ready:false, mode:"database", persistence:"postgresql", authRequired:true });
     }
@@ -382,15 +441,34 @@ function createApp({ pool = defaultPool } = {}) {
     const inventoryProvided = Object.prototype.hasOwnProperty.call(req.body, "hardwareInventory") && req.body.hardwareInventory != null;
     const hardwareInventory = inventoryProvided ? normalizeHardwareInventory(req.body.hardwareInventory) : null;
     if (inventoryProvided && !hardwareInventory) return res.status(400).json({ error:"hardwareInventory contains invalid or unsupported fields." });
+    let client;
+    let transactionStarted = false;
     try {
-      const result = await pool.query(
+      client = await pool.connect();
+      await client.query("BEGIN");
+      transactionStarted = true;
+      const result = await client.query(
         "UPDATE devices d SET status='online',last_seen=NOW()::text,updated_at=NOW(),agent_version=COALESCE($2,d.agent_version),hardware_inventory=COALESCE($3::jsonb,d.hardware_inventory) FROM device_agent_tokens t WHERE t.token_hash=$1 AND t.device_id=d.id AND t.tenant_id=d.tenant_id RETURNING d.id,d.tenant_id,d.agent_version,d.hardware_inventory",
         [hashToken(token),agentVersion,hardwareInventory ? JSON.stringify(hardwareInventory) : null]
       );
-      if (!result.rowCount) return res.status(401).json({ error:"Agent token is invalid." });
-      await pool.query("UPDATE device_agent_tokens SET last_used_at=NOW() WHERE token_hash=$1",[hashToken(token)]);
+      if (!result.rowCount) {
+        await client.query("ROLLBACK");
+        transactionStarted = false;
+        return res.status(401).json({ error:"Agent token is invalid." });
+      }
+      const device = result.rows[0];
+      await client.query("UPDATE device_agent_tokens SET last_used_at=NOW() WHERE token_hash=$1",[hashToken(token)]);
+      await client.query(
+        "UPDATE device_alerts SET resolved_at=NOW() WHERE tenant_id=$1 AND device_id=$2 AND alert_type='endpoint_offline' AND resolved_at IS NULL",
+        [device.tenant_id,device.id]
+      );
+      await client.query("COMMIT");
+      transactionStarted = false;
       return res.json({ ok:true, deviceId:result.rows[0].id, receivedAt:new Date().toISOString(), agentVersion:result.rows[0].agent_version, hardwareInventoryReceived:Boolean(result.rows[0].hardware_inventory) });
-    } catch (error) { return next(error); }
+    } catch (error) {
+      if (transactionStarted) { try { await client.query("ROLLBACK"); } catch (_rollbackError) {} }
+      return next(error);
+    } finally { if (client) client.release(); }
   });
 
   app.get("/api/summary", requireAuth, async (req,res,next) => {
@@ -437,6 +515,28 @@ function createApp({ pool = defaultPool } = {}) {
     } catch (error) { return next(error); }
   });
 
+  app.get("/api/alerts", requireAuth, async (req,res,next) => {
+    const status = typeof req.query.status === "string" ? req.query.status.toLowerCase() : "";
+    if (status && !["active","resolved"].includes(status)) return res.status(400).json({ error:"status must be active or resolved" });
+    try {
+      if (!pool) return res.json({ items:[],total:0,mode:"demo" });
+      const values = [req.user.tenantId];
+      let statusClause = "";
+      if (status) {
+        values.push(status === "active");
+        statusClause = " AND (a.resolved_at IS NULL) = $2";
+      }
+      const result = await pool.query(
+        "SELECT a.id,a.device_id,d.name AS device_name,a.alert_type,a.opened_at,a.resolved_at " +
+        "FROM device_alerts a JOIN devices d ON d.id=a.device_id AND d.tenant_id=a.tenant_id " +
+        "WHERE a.tenant_id=$1" + statusClause + " ORDER BY a.opened_at DESC LIMIT 100",
+        values
+      );
+      const items = result.rows.map(mapDeviceAlert);
+      return res.json({ items,total:items.length,mode:"database" });
+    } catch (error) { return next(error); }
+  });
+
   app.use("/api", (_req,res) => res.status(404).json({ error:"API route not found" }));
   app.use((error,_req,res,_next) => {
     console.error("Request failed:",error.message);
@@ -448,7 +548,9 @@ function createApp({ pool = defaultPool } = {}) {
 if (require.main === module) {
   const port = Number(process.env.PORT) || 3000;
   initializeDatabase().then(() => {
+    startOfflineAlertMonitor(defaultPool);
     createApp().listen(port,"0.0.0.0",() => console.log("GOGO Endpoint Central started on port " + port + (defaultPool ? " with PostgreSQL and authentication" : " in demo mode")));
   }).catch(error => { console.error("Startup failed:",error.message); process.exit(1); });
 }
-module.exports = { createApp, initializeDatabase };
+module.exports = { createApp, initializeDatabase, reconcileOfflineAlerts, startOfflineAlertMonitor };
+

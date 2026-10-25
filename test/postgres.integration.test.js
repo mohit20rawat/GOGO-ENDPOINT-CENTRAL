@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const { Pool } = require("pg");
 const bcrypt = require("bcryptjs");
 const crypto = require("node:crypto");
-const { createApp, initializeDatabase } = require("../app");
+const { createApp, initializeDatabase, reconcileOfflineAlerts } = require("../app");
 
 const databaseUrl = process.env.POSTGRES_TEST_DATABASE_URL;
 const enabled = process.env.RUN_POSTGRES_INTEGRATION === "1" && Boolean(databaseUrl);
@@ -28,7 +28,7 @@ test("PostgreSQL enrollment, heartbeat, token rotation, revocation, and audit fl
       initializeDatabase(pool, bootstrapEnv),
       initializeDatabase(pool, bootstrapEnv)
     ]);
-    const migration = await pool.query("SELECT version FROM schema_migrations WHERE version = $1", ["001_initial_schema"]);
+    const migration = await pool.query("SELECT version FROM schema_migrations WHERE version = $1", ["002_offline_alerts"]);
     assert.equal(migration.rowCount, 1);
     server = createApp({ pool }).listen(0);
     await new Promise((resolve, reject) => {
@@ -42,7 +42,7 @@ test("PostgreSQL enrollment, heartbeat, token rotation, revocation, and audit fl
     assert.equal(readinessResponse.status, 200);
     const readiness = await readinessResponse.json();
     assert.equal(readiness.ready, true);
-    assert.equal(readiness.schemaVersion, "001_initial_schema");
+    assert.equal(readiness.schemaVersion, "002_offline_alerts");
 
     const loginResponse = await fetch(base + "/api/auth/login", {
       method: "POST", headers: json,
@@ -234,6 +234,30 @@ test("PostgreSQL enrollment, heartbeat, token rotation, revocation, and audit fl
     assert.equal(recoveredSummary.offlineDevices, summaryBeforeOffline.offlineDevices);
     assert.equal(recoveredSummary.onlineDevices, summaryBeforeOffline.onlineDevices);
 
+    // Stale heartbeats create one persistent alert per tenant and device, even after repeated scans.
+    await pool.query(
+      "UPDATE devices SET status='online',updated_at=NOW()-INTERVAL '6 minutes' WHERE id IN ($1,$2)",
+      [device.deviceId,isolatedDeviceId]
+    );
+    const firstScan = await reconcileOfflineAlerts(pool);
+    assert.ok(firstScan.some(alert => alert.device_id === device.deviceId));
+    assert.ok(firstScan.some(alert => alert.device_id === isolatedDeviceId));
+    const secondScan = await reconcileOfflineAlerts(pool);
+    assert.equal(secondScan.some(alert => alert.device_id === device.deviceId || alert.device_id === isolatedDeviceId),false);
+
+    const primaryAlerts = await (await fetch(base + "/api/alerts?status=active", { headers:adminHeaders })).json();
+    const isolatedAlerts = await (await fetch(base + "/api/alerts?status=active", { headers:isolatedHeaders })).json();
+    assert.deepEqual(primaryAlerts.items.map(alert => alert.deviceId).filter(id => id === isolatedDeviceId),[]);
+    assert.deepEqual(isolatedAlerts.items.map(alert => alert.deviceId).filter(id => id === device.deviceId),[]);
+    assert.ok(primaryAlerts.items.some(alert => alert.deviceId === device.deviceId && alert.status === "active"));
+    assert.ok(isolatedAlerts.items.some(alert => alert.deviceId === isolatedDeviceId && alert.status === "active"));
+
+    assert.equal((await heartbeat(device.agentToken)).status,200);
+    const recoveredAlerts = await (await fetch(base + "/api/alerts?status=resolved", { headers:adminHeaders })).json();
+    assert.ok(recoveredAlerts.items.some(alert => alert.deviceId === device.deviceId && alert.status === "resolved" && alert.resolvedAt));
+    const isolatedStillActive = await (await fetch(base + "/api/alerts?status=active", { headers:isolatedHeaders })).json();
+    assert.ok(isolatedStillActive.items.some(alert => alert.deviceId === isolatedDeviceId));
+
     const rotateResponse = await fetch(base + "/api/agent/rotate-token", {
       method: "POST", headers: { authorization: "Bearer " + device.agentToken }
     });
@@ -280,3 +304,4 @@ test("PostgreSQL enrollment, heartbeat, token rotation, revocation, and audit fl
     await pool.end();
   }
 });
+
