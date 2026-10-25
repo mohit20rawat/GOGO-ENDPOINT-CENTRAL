@@ -3,6 +3,8 @@ using System.Security.Principal;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Management;
+using System.IO;
 using System.Net.Http.Json;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -64,6 +66,8 @@ internal sealed class AgentWorker(ILogger<AgentWorker> logger) : BackgroundServi
     private string? _token;
     private string? _baseUrl;
     private DateTimeOffset _rotateAfter;
+    private DateTimeOffset _nextInventoryCollection;
+    private HardwareInventory? _hardwareInventory;
     private readonly HttpClient _http = new() { Timeout = RequestTimeout };
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -127,7 +131,13 @@ internal sealed class AgentWorker(ILogger<AgentWorker> logger) : BackgroundServi
     {
         using var request = new HttpRequestMessage(HttpMethod.Post, $"{_baseUrl}/api/agent/heartbeat");
         request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _token);
-        request.Content = JsonContent.Create(new { agentVersion = "0.2.0" }, options: JsonOptions);
+        if (_hardwareInventory is null || DateTimeOffset.UtcNow >= _nextInventoryCollection)
+        {
+            try { _hardwareInventory = HardwareInventoryCollector.Collect(); }
+            catch (Exception ex) { logger.LogWarning("Hardware inventory collection failed ({ErrorType}); heartbeat will continue.", ex.GetType().Name); }
+            _nextInventoryCollection = DateTimeOffset.UtcNow.AddMinutes(15);
+        }
+        request.Content = JsonContent.Create(new { agentVersion = "0.3.0", hardwareInventory = _hardwareInventory }, options: JsonOptions);
         using var response = await _http.SendAsync(request, ct);
         if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
             throw new HttpRequestException("Agent credential rejected.", null, response.StatusCode);
@@ -165,6 +175,58 @@ internal sealed class AgentWorker(ILogger<AgentWorker> logger) : BackgroundServi
     }
 
     private sealed record RotationResponse([property: JsonPropertyName("agentToken")] string? AgentToken);
+}
+
+internal sealed record HardwareInventory(
+    string? Manufacturer, string? Model, string? CpuModel, int? CpuCores, int? LogicalProcessors,
+    ulong? MemoryTotalBytes, string? SystemDrive, ulong? SystemDriveTotalBytes, ulong? SystemDriveFreeBytes, string CollectedAt);
+
+internal static class HardwareInventoryCollector
+{
+    internal static HardwareInventory Collect()
+    {
+        string? manufacturer = null, model = null, cpuModel = null, systemDrive = null;
+        int? cpuCores = null, logicalProcessors = null;
+        ulong? memoryTotalBytes = null, driveTotal = null, driveFree = null;
+        try
+        {
+            using var searcher = new ManagementObjectSearcher("SELECT Manufacturer, Model, TotalPhysicalMemory FROM Win32_ComputerSystem");
+            using var results = searcher.Get();
+            foreach (ManagementObject item in results)
+            {
+                manufacturer = item["Manufacturer"]?.ToString();
+                model = item["Model"]?.ToString();
+                if (ulong.TryParse(item["TotalPhysicalMemory"]?.ToString(), out var memory)) memoryTotalBytes = memory;
+                break;
+            }
+        }
+        catch { /* Optional telemetry must never prevent heartbeats. */ }
+        try
+        {
+            using var searcher = new ManagementObjectSearcher("SELECT Name, NumberOfCores, NumberOfLogicalProcessors FROM Win32_Processor");
+            using var results = searcher.Get();
+            foreach (ManagementObject item in results)
+            {
+                cpuModel ??= item["Name"]?.ToString()?.Trim();
+                if (int.TryParse(item["NumberOfCores"]?.ToString(), out var cores)) cpuCores = (cpuCores ?? 0) + cores;
+                if (int.TryParse(item["NumberOfLogicalProcessors"]?.ToString(), out var logical)) logicalProcessors = (logicalProcessors ?? 0) + logical;
+            }
+        }
+        catch { /* Optional telemetry must never prevent heartbeats. */ }
+        try
+        {
+            var root = Path.GetPathRoot(Environment.SystemDirectory);
+            if (!string.IsNullOrWhiteSpace(root))
+            {
+                var drive = new DriveInfo(root);
+                systemDrive = root;
+                if (drive.IsReady) { driveTotal = (ulong)drive.TotalSize; driveFree = (ulong)drive.AvailableFreeSpace; }
+            }
+        }
+        catch { /* Optional telemetry must never prevent heartbeats. */ }
+        return new HardwareInventory(manufacturer, model, cpuModel, cpuCores, logicalProcessors,
+            memoryTotalBytes, systemDrive, driveTotal, driveFree, DateTimeOffset.UtcNow.ToString("O"));
+    }
 }
 
 internal sealed record AgentConfig(string ServerUrl);
