@@ -4,7 +4,7 @@ const crypto = require("node:crypto");
 const bcrypt = require("bcryptjs");
 const helmet = require("helmet");
 const { rateLimit } = require("express-rate-limit");
-const { initializeDatabase, LATEST_SCHEMA_VERSION } = require("./migrations");
+const { initializeDatabase: runDatabaseMigrations, LATEST_SCHEMA_VERSION } = require("./migrations");
 
 const demoDevices = [
   { id: "DEV-1001", name: "FIN-LAP-014", user: "Aarav Sharma", department: "Finance", os: "Windows 11", version: "23H2", status: "online", risk: "low", lastSeen: "Just now" },
@@ -33,6 +33,10 @@ if (process.env.DATABASE_URL) {
 }
 const hashToken = (token) => crypto.createHash("sha256").update(token).digest("hex");
 const validEmail = (value) => typeof value === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) && value.length <= 254;
+
+async function initializeDatabase(pool = defaultPool, env = process.env) {
+  return runDatabaseMigrations(pool, env);
+}
 
 function normalizeHardwareInventory(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
