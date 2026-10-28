@@ -276,7 +276,7 @@ function createApp({ pool = defaultPool } = {}) {
     } finally { if (client) client.release(); }
   });
 
-  app.post("/api/admin/devices/:deviceId/revoke-agent", requireAuth, requireRole("admin"), async (req,res,next) => {
+  app.post("/api/admin/devices/:deviceId/revoke-agent", requireAuth, requireRole("admin"), adminMutationLimiter, async (req,res,next) => {
     if (!pool) return res.status(503).json({ error:"Agent credential management requires PostgreSQL." });
     const deviceId = typeof req.params.deviceId === "string" ? req.params.deviceId.slice(0,120) : "";
     let client;
