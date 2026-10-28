@@ -184,6 +184,30 @@ test("PostgreSQL enrollment, heartbeat, token rotation, revocation, and audit fl
     })).json();
     assert.equal(primaryTenantInventory.total, 0);
 
+    // Tenant A must not read or mutate Tenant B's records through secondary APIs.
+    const crossTenantRevoke = await fetch(
+      base + "/api/admin/devices/" + encodeURIComponent(isolatedDeviceId) + "/revoke-agent",
+      { method: "POST", headers: adminHeaders }
+    );
+    assert.equal(crossTenantRevoke.status, 404);
+
+    const primaryAuditMarker = "PRIMARY-TENANT-ISOLATION-" + crypto.randomUUID();
+    const isolatedAuditMarker = "ISOLATED-TENANT-ISOLATION-" + crypto.randomUUID();
+    await pool.query(
+      "INSERT INTO audit_events (id,action,actor,event_time,result,tenant_id) VALUES ($1,$2,$3,$4,'success',$5)",
+      ["AUD_" + crypto.randomUUID(), primaryAuditMarker, login.user.email, new Date().toISOString(), login.user.tenantId]
+    );
+    await pool.query(
+      "INSERT INTO audit_events (id,action,actor,event_time,result,tenant_id) VALUES ($1,$2,$3,$4,'success',$5)",
+      ["AUD_" + crypto.randomUUID(), isolatedAuditMarker, isolatedEmail, new Date().toISOString(), isolatedTenantId]
+    );
+    const primaryAuditIsolation = await (await fetch(base + "/api/audit", { headers: adminHeaders })).json();
+    const isolatedAuditIsolation = await (await fetch(base + "/api/audit", { headers: isolatedHeaders })).json();
+    assert.ok(primaryAuditIsolation.items.some(item => item.action === primaryAuditMarker));
+    assert.equal(primaryAuditIsolation.items.some(item => item.action === isolatedAuditMarker), false);
+    assert.ok(isolatedAuditIsolation.items.some(item => item.action === isolatedAuditMarker));
+    assert.equal(isolatedAuditIsolation.items.some(item => item.action === primaryAuditMarker), false);
+
     const enrollmentResponse = await fetch(base + "/api/admin/enrollment-tokens", {
       method: "POST", headers: adminHeaders, body: "{}"
     });
