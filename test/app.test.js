@@ -133,3 +133,105 @@ test("administrative mutation endpoints enforce a per-IP rate limit", async () =
   assert.deepEqual(await last.json(), { error: "Too many administrative changes. Try again later." });
   assert.ok(last.headers.get("ratelimit") || last.headers.get("ratelimit-policy"));
 }));
+
+
+test("database-backed protected endpoints reject missing and invalid sessions", async () => {
+  let sessionLookups = 0;
+  const pool = {
+    query: async sql => {
+      if (sql.includes("FROM auth_sessions s JOIN users u")) {
+        sessionLookups++;
+        return { rowCount: 0, rows: [] };
+      }
+      throw new Error("Unexpected query in auth guard test");
+    }
+  };
+  await withServer(async base => {
+    const protectedRequests = [
+      fetch(base + "/api/auth/me"),
+      fetch(base + "/api/devices"),
+      fetch(base + "/api/audit"),
+      fetch(base + "/api/alerts"),
+      fetch(base + "/api/admin/users", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }),
+      fetch(base + "/api/admin/enrollment-tokens", { method: "POST" }),
+      fetch(base + "/api/admin/devices/dev_example/revoke-agent", { method: "POST" })
+    ];
+    const responses = await Promise.all(protectedRequests);
+    assert.deepEqual(responses.map(response => response.status), [401, 401, 401, 401, 401, 401, 401]);
+    const bodies = await Promise.all(responses.map(response => response.json()));
+    assert.ok(bodies.every(body => body.error === "Authentication required"));
+    assert.equal(sessionLookups, 0, "requests without a bearer token must not query the session store");
+
+    const invalidTokenResponse = await fetch(base + "/api/auth/me", {
+      headers: { authorization: "Bearer invalid-session-token" }
+    });
+    assert.equal(invalidTokenResponse.status, 401);
+    assert.deepEqual(await invalidTokenResponse.json(), { error: "Session expired or invalid" });
+    assert.equal(sessionLookups, 1, "an invalid bearer token must be checked against the session store");
+  }, pool);
+});
+
+test("viewer sessions cannot perform administrative mutations", async () => {
+  const pool = {
+    query: async sql => {
+      assert.ok(sql.includes("FROM auth_sessions s JOIN users u"));
+      return {
+        rowCount: 1,
+        rows: [{ id: "viewer-1", tenant_id: "tenant-a", email: "viewer@example.test", role: "viewer" }]
+      };
+    }
+  };
+  await withServer(async base => {
+    const headers = { authorization: "Bearer valid-viewer-session", "content-type": "application/json" };
+    const createUser = await fetch(base + "/api/admin/users", {
+      method: "POST", headers,
+      body: JSON.stringify({ email: "blocked@example.test", password: "long-enough-password-123", role: "viewer" })
+    });
+    const createEnrollmentToken = await fetch(base + "/api/admin/enrollment-tokens", {
+      method: "POST", headers, body: "{}"
+    });
+    const revokeAgent = await fetch(base + "/api/admin/devices/dev_example/revoke-agent", {
+      method: "POST", headers
+    });
+    for (const response of [createUser, createEnrollmentToken, revokeAgent]) {
+      assert.equal(response.status, 403);
+      assert.deepEqual(await response.json(), { error: "Insufficient permissions" });
+    }
+  }, pool);
+});
+
+test("device, audit, and alert queries are scoped to the authenticated tenant", async () => {
+  const scopedQueries = [];
+  const pool = {
+    query: async (sql, values = []) => {
+      if (sql.includes("FROM auth_sessions s JOIN users u")) {
+        return {
+          rowCount: 1,
+          rows: [{ id: "user-a", tenant_id: "tenant-a", email: "admin-a@example.test", role: "admin" }]
+        };
+      }
+      scopedQueries.push({ sql, values });
+      return { rowCount: 0, rows: [] };
+    }
+  };
+  await withServer(async base => {
+    const headers = { authorization: "Bearer valid-tenant-a-session" };
+    for (const route of ["/api/devices", "/api/audit", "/api/alerts"]) {
+      const response = await fetch(base + route, { headers });
+      assert.equal(response.status, 200, route);
+      assert.deepEqual(await response.json(), { items: [], total: 0, mode: "database" });
+    }
+  }, pool);
+
+  assert.equal(scopedQueries.length, 3);
+  const deviceQuery = scopedQueries.find(query => query.sql.includes("FROM devices WHERE"));
+  const auditQuery = scopedQueries.find(query => query.sql.includes("FROM audit_events"));
+  const alertQuery = scopedQueries.find(query => query.sql.includes("FROM device_alerts a JOIN devices"));
+  assert.ok(deviceQuery, "device list query was issued");
+  assert.ok(auditQuery, "audit query was issued");
+  assert.ok(alertQuery, "alert query was issued");
+  assert.match(deviceQuery.sql, /WHERE tenant_id\s*=\s*\$1/);
+  assert.match(auditQuery.sql, /WHERE tenant_id\s*=\s*\$1/);
+  assert.match(alertQuery.sql, /WHERE a\.tenant_id\s*=\s*\$1/);
+  for (const query of scopedQueries) assert.equal(query.values[0], "tenant-a");
+});
