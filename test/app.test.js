@@ -131,5 +131,5 @@ test("administrative mutation endpoints enforce a per-IP rate limit", async () =
   }
   assert.equal(last.status, 429);
   assert.deepEqual(await last.json(), { error: "Too many administrative changes. Try again later." });
-  assert.ok(last.headers.get("ratelimit-limit"));
+  assert.ok(last.headers.get("ratelimit") || last.headers.get("ratelimit-policy"));
 }));
