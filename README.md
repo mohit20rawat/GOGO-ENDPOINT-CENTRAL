@@ -98,7 +98,7 @@ The script checks whether the local state files exist, whether the current user 
 - Session tokens are random, expire after eight hours, and only their SHA-256 hashes are stored.
 - Passwords are hashed using bcrypt; raw passwords and tokens are never written to logs.
 - SQL queries scope device/audit access to the authenticated tenant.
-- This is not yet production-ready: password reset, MFA/SSO, richer audit logging, tenant onboarding, automated migration tooling, a restrictive Content Security Policy, backups, monitoring, formal security review remain.
+- This is not yet production-ready: password reset, MFA/SSO, richer audit logging, tenant onboarding, a restrictive Content Security Policy, scheduled/off-site backups, monitoring, formal security review, and disaster-recovery objectives remain. CI now runs a guarded backup/restore drill against a disposable local PostgreSQL database.
 - Do not connect real endpoints or enable consequential management actions until those controls are reviewed and implemented.
 
 ## Deployment
