@@ -97,6 +97,7 @@ The script checks whether the local state files exist, whether the current user 
 - Database mode requires bearer authentication for inventory, summary, audit, and user administration.
 - Session tokens are random, expire after eight hours, and only their SHA-256 hashes are stored.
 - Passwords are hashed using bcrypt; raw passwords and tokens are never written to logs.
+- Automated regression tests cover sign-in throttling, logout invalidation, session authorization, and tenant-isolation boundaries.
 - SQL queries scope device/audit access to the authenticated tenant.
 - This is not yet production-ready: password reset, MFA/SSO, richer audit logging, tenant onboarding, a restrictive Content Security Policy, scheduled/off-site backups, monitoring, formal security review, and disaster-recovery objectives remain. CI now runs a guarded backup/restore drill against a disposable local PostgreSQL database.
 - Do not connect real endpoints or enable consequential management actions until those controls are reviewed and implemented.
