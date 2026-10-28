@@ -305,3 +305,68 @@ test("admin credential revocation cannot touch a device from another tenant", as
   assert.ok(transactionalQueries.some(query => query.sql === "ROLLBACK"));
   assert.equal(transactionalQueries.some(query => /DELETE FROM device_agent_tokens|UPDATE devices SET|INSERT INTO audit_events/.test(query.sql)), false);
 });
+
+test("logout invalidates the current session and stores only its token hash", async () => {
+  const rawToken = "session-token-to-revoke";
+  let sessionActive = true;
+  let deletedHash = null;
+  const pool = {
+    query: async (sql, values = []) => {
+      if (sql.includes("FROM auth_sessions s JOIN users u")) {
+        return sessionActive
+          ? { rowCount: 1, rows: [{ id: "user-1", tenant_id: "tenant-a", email: "user@example.test", role: "admin" }] }
+          : { rowCount: 0, rows: [] };
+      }
+      if (sql.includes("DELETE FROM auth_sessions WHERE token_hash=$1")) {
+        deletedHash = values[0];
+        sessionActive = false;
+        return { rowCount: 1, rows: [] };
+      }
+      throw new Error("Unexpected query in logout lifecycle test");
+    }
+  };
+
+  await withServer(async base => {
+    const logout = await fetch(base + "/api/auth/logout", {
+      method: "POST",
+      headers: { authorization: "Bearer " + rawToken }
+    });
+    assert.equal(logout.status, 200);
+    assert.deepEqual(await logout.json(), { ok: true });
+
+    const afterLogout = await fetch(base + "/api/auth/me", {
+      headers: { authorization: "Bearer " + rawToken }
+    });
+    assert.equal(afterLogout.status, 401);
+    assert.deepEqual(await afterLogout.json(), { error: "Session expired or invalid" });
+  }, pool);
+
+  assert.ok(deletedHash);
+  assert.notEqual(deletedHash, rawToken, "the database must receive a hash, not the bearer token");
+  assert.match(deletedHash, /^[a-f0-9]{64}$/i, "the stored session identifier should be a SHA-256 hex digest");
+});
+
+test("sign-in rate limiter rejects the eleventh attempt in one window", async () => {
+  const pool = {
+    query: async sql => {
+      assert.match(sql, /FROM users WHERE email=\$1/);
+      return { rowCount: 0, rows: [] };
+    }
+  };
+
+  await withServer(async base => {
+    let last;
+    for (let i = 0; i < 11; i++) {
+      last = await fetch(base + "/api/auth/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: "unknown@example.test", password: "not-the-password" })
+      });
+      if (i < 10) assert.equal(last.status, 401);
+    }
+    assert.equal(last.status, 429);
+    assert.deepEqual(await last.json(), { error: "Too many sign-in attempts. Try again later." });
+    assert.ok(last.headers.get("ratelimit") || last.headers.get("ratelimit-policy"));
+  }, pool);
+});
+
