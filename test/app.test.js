@@ -122,3 +122,14 @@ test("agent credential revocation is disabled without PostgreSQL", async () => w
   assert.equal(response.status,503);
   assert.match((await response.json()).error,/requires PostgreSQL/);
 }));
+
+test("administrative mutation endpoints enforce a per-IP rate limit", async () => withServer(async base => {
+  let last;
+  for (let i = 0; i < 21; i++) {
+    last = await fetch(base + "/api/admin/enrollment-tokens", { method: "POST" });
+    if (i < 20) assert.equal(last.status, 503);
+  }
+  assert.equal(last.status, 429);
+  assert.deepEqual(await last.json(), { error: "Too many administrative changes. Try again later." });
+  assert.ok(last.headers.get("ratelimit-limit"));
+}));
