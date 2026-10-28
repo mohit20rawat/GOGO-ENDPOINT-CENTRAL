@@ -193,7 +193,16 @@ function createApp({ pool = defaultPool } = {}) {
   });
   app.get("/api/auth/me", requireAuth, (req,res) => res.json({ user:req.user }));
 
-  app.post("/api/admin/users", requireAuth, requireRole("admin"), async (req,res,next) => {
+  // In-memory per-process protection for privileged mutations. Use a shared store before horizontal scaling.
+  const adminMutationLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 20,
+    standardHeaders: "draft-7",
+    legacyHeaders: false,
+    message: { error: "Too many administrative changes. Try again later." }
+  });
+
+  app.post("/api/admin/users", requireAuth, requireRole("admin"), adminMutationLimiter, async (req,res,next) => {
     if (!pool) return res.status(503).json({ error:"User administration requires PostgreSQL." });
     const email = typeof req.body.email === "string" ? req.body.email.trim().toLowerCase() : "";
     const password = typeof req.body.password === "string" ? req.body.password : "";
@@ -214,7 +223,7 @@ function createApp({ pool = defaultPool } = {}) {
 
   const enrollmentLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: "draft-7", legacyHeaders: false, message: { error: "Too many enrollment attempts. Try again later." } });
   const heartbeatLimiter = rateLimit({ windowMs: 60 * 1000, limit: 120, standardHeaders: "draft-7", legacyHeaders: false });
-  app.post("/api/admin/enrollment-tokens", requireAuth, requireRole("admin"), async (req,res,next) => {
+  app.post("/api/admin/enrollment-tokens", requireAuth, requireRole("admin"), adminMutationLimiter, async (req,res,next) => {
     if (!pool) return res.status(503).json({ error:"Device enrollment requires PostgreSQL." });
     const token = crypto.randomBytes(32).toString("base64url");
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
