@@ -235,3 +235,36 @@ test("device, audit, and alert queries are scoped to the authenticated tenant", 
   assert.match(alertQuery.sql, /WHERE a\.tenant_id\s*=\s*\$1/);
   for (const query of scopedQueries) assert.equal(query.values[0], "tenant-a");
 });
+
+
+test("agent credential revocation is covered by the administrative mutation rate limit", async () => {
+  const pool = {
+    query: async sql => {
+      assert.ok(sql.includes("FROM auth_sessions s JOIN users u"));
+      return {
+        rowCount: 1,
+        rows: [{ id: "admin-1", tenant_id: "tenant-a", email: "admin@example.test", role: "admin" }]
+      };
+    },
+    connect: async () => ({
+      query: async sql => {
+        if (sql.includes("SELECT id,name FROM devices")) return { rowCount: 0, rows: [] };
+        return { rowCount: 0, rows: [] };
+      },
+      release: () => {}
+    })
+  };
+  await withServer(async base => {
+    let last;
+    for (let i = 0; i < 21; i++) {
+      last = await fetch(base + "/api/admin/devices/dev_missing/revoke-agent", {
+        method: "POST",
+        headers: { authorization: "Bearer valid-admin-session" }
+      });
+      if (i < 20) assert.equal(last.status, 404);
+    }
+    assert.equal(last.status, 429);
+    assert.deepEqual(await last.json(), { error: "Too many administrative changes. Try again later." });
+    assert.ok(last.headers.get("ratelimit") || last.headers.get("ratelimit-policy"));
+  }, pool);
+});
