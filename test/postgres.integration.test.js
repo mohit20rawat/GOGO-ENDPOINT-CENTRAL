@@ -85,6 +85,11 @@ test("PostgreSQL enrollment, heartbeat, token rotation, revocation, and audit fl
     ]);
     const migration = await pool.query("SELECT version FROM schema_migrations WHERE version = $1", ["002_offline_alerts"]);
     assert.equal(migration.rowCount, 1);
+    const migrationVersions = await pool.query("SELECT version FROM schema_migrations ORDER BY version");
+    assert.deepEqual(migrationVersions.rows.map(row => row.version), ["001_initial_schema", "002_offline_alerts"]);
+    await initializeDatabase(pool, bootstrapEnv);
+    const versionsAfterRestart = await pool.query("SELECT version FROM schema_migrations ORDER BY version");
+    assert.deepEqual(versionsAfterRestart.rows.map(row => row.version), ["001_initial_schema", "002_offline_alerts"]);
     server = createApp({ pool }).listen(0);
     await new Promise((resolve, reject) => {
       server.once("listening", resolve);
