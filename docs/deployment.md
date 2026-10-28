@@ -1,6 +1,6 @@
 # Cloud deployment checklist
 
-This project is a prototype. Use a **new, dedicated PostgreSQL database** for GOGO Endpoint Central. Do not point it at another application's database: startup creates tables and backfills legacy rows without a tenant to the initial workspace.
+This project is a prototype. Use a **new, dedicated PostgreSQL database** for GOGO Endpoint Central. Do not point it at another application's database. Startup applies the numbered migrations in `migrations.js`; the initial migration creates the schema and assigns legacy rows without a tenant to the initial workspace.
 
 ## 1. Provision a dedicated database
 
@@ -23,11 +23,18 @@ In the Render dashboard for `gogo-endpoint-central`, open **Environment** and ad
 
 Do not set bootstrap credentials to example values. Treat the bootstrap password like a secret; do not put it in GitHub. The app creates the initial admin only if that email is not already present in the initial tenant.
 
-## 3. Deploy only the reviewed branch
+## 3. Migration and deployment safety
+
+- Before applying a schema migration to any database containing important data, take a backup and verify that it can be restored to a separate database.
+- Test migrations first against the disposable PostgreSQL database used by CI or another isolated test database.
+- Add a new numbered migration for every schema change; do not edit a migration that may already have run. The migration runner applies pending migrations under an advisory lock and records versions transactionally.
+- Migrations are forward-only. Rolling back application code does not automatically reverse schema changes; restoring a verified backup may be required.
+
+## 4. Deploy only the reviewed branch
 
 The current Render service may still be configured for the earlier MVP branch. Do not assume the feature branch is live. Review and merge the draft pull request only after CI passes, then configure Render to deploy the intended branch. Avoid manually deploying an unreviewed branch.
 
-## 4. Verify after deployment
+## 5. Verify after deployment
 
 1. Open `/health`; expect HTTP 200 and `{"status":"ok","service":"gogo-endpoint-central"}`.
 2. Open `/api/ready`; expect `mode: "database"`, `persistence: "postgresql"`, and `authRequired: true`.
