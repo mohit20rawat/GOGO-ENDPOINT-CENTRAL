@@ -41,7 +41,7 @@ The current Render service may still be configured for the earlier MVP branch. D
 
 - Sign-in attempts are limited to 10 per 15-minute window per client IP.
 - Enrollment attempts are limited to 10 per 15-minute window; heartbeat and token rotation share a 120-request-per-minute limiter.
-- Administrative user creation and enrollment-token issuance share a limit of 20 mutations per 15-minute window per client IP.
+- Administrative user creation, enrollment-token issuance, and agent-credential revocation share a limit of 20 mutations per 15-minute window per client IP.
 - Rate limits currently use the process-local in-memory store. They are a useful single-instance guard, not a distributed control; before scaling to multiple application instances, configure a shared rate-limit store so limits cannot be bypassed by spreading requests across instances.
 - The application trusts one reverse-proxy hop for client IP resolution, matching the current Render deployment topology. Revalidate this setting if the proxy topology changes.
 

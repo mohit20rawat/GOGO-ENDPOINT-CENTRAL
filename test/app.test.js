@@ -235,3 +235,73 @@ test("device, audit, and alert queries are scoped to the authenticated tenant", 
   assert.match(alertQuery.sql, /WHERE a\.tenant_id\s*=\s*\$1/);
   for (const query of scopedQueries) assert.equal(query.values[0], "tenant-a");
 });
+
+
+test("agent credential revocation is covered by the administrative mutation rate limit", async () => {
+  const pool = {
+    query: async sql => {
+      assert.ok(sql.includes("FROM auth_sessions s JOIN users u"));
+      return {
+        rowCount: 1,
+        rows: [{ id: "admin-1", tenant_id: "tenant-a", email: "admin@example.test", role: "admin" }]
+      };
+    },
+    connect: async () => ({
+      query: async sql => {
+        if (sql.includes("SELECT id,name FROM devices")) return { rowCount: 0, rows: [] };
+        return { rowCount: 0, rows: [] };
+      },
+      release: () => {}
+    })
+  };
+  await withServer(async base => {
+    let last;
+    for (let i = 0; i < 21; i++) {
+      last = await fetch(base + "/api/admin/devices/dev_missing/revoke-agent", {
+        method: "POST",
+        headers: { authorization: "Bearer valid-admin-session" }
+      });
+      if (i < 20) assert.equal(last.status, 404);
+    }
+    assert.equal(last.status, 429);
+    assert.deepEqual(await last.json(), { error: "Too many administrative changes. Try again later." });
+    assert.ok(last.headers.get("ratelimit") || last.headers.get("ratelimit-policy"));
+  }, pool);
+});
+
+
+test("admin credential revocation cannot touch a device from another tenant", async () => {
+  const transactionalQueries = [];
+  const pool = {
+    query: async sql => {
+      assert.ok(sql.includes("FROM auth_sessions s JOIN users u"));
+      return {
+        rowCount: 1,
+        rows: [{ id: "admin-a", tenant_id: "tenant-a", email: "admin-a@example.test", role: "admin" }]
+      };
+    },
+    connect: async () => ({
+      query: async (sql, values = []) => {
+        transactionalQueries.push({ sql, values });
+        if (sql.includes("SELECT id,name FROM devices")) return { rowCount: 0, rows: [] };
+        return { rowCount: 0, rows: [] };
+      },
+      release: () => {}
+    })
+  };
+  await withServer(async base => {
+    const response = await fetch(base + "/api/admin/devices/dev-tenant-b/revoke-agent", {
+      method: "POST",
+      headers: { authorization: "Bearer valid-admin-a-session" }
+    });
+    assert.equal(response.status, 404);
+    assert.deepEqual(await response.json(), { error: "Device not found in your workspace." });
+  }, pool);
+
+  const lookup = transactionalQueries.find(query => query.sql.includes("SELECT id,name FROM devices"));
+  assert.ok(lookup);
+  assert.match(lookup.sql, /WHERE id=\$1 AND tenant_id=\$2/);
+  assert.deepEqual(lookup.values, ["dev-tenant-b", "tenant-a"]);
+  assert.ok(transactionalQueries.some(query => query.sql === "ROLLBACK"));
+  assert.equal(transactionalQueries.some(query => /DELETE FROM device_agent_tokens|UPDATE devices SET|INSERT INTO audit_events/.test(query.sql)), false);
+});
