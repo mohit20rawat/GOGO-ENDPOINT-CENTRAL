@@ -80,7 +80,7 @@ const migrations = [
 ];
 
 const LATEST_SCHEMA_VERSION = migrations[migrations.length - 1].version;
-const validEmail = (value) => typeof value === "string" && /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(value) && value.length <= 254;
+const validEmail = (value) => typeof value === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) && value.length <= 254;
 
 async function initializeDatabase(pool, env = process.env) {
   if (!pool) return;
