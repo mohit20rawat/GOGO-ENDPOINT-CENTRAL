@@ -160,13 +160,14 @@ test("database-backed protected endpoints reject missing and invalid sessions", 
     assert.deepEqual(responses.map(response => response.status), [401, 401, 401, 401, 401, 401, 401]);
     const bodies = await Promise.all(responses.map(response => response.json()));
     assert.ok(bodies.every(body => body.error === "Authentication required"));
-    assert.equal(sessionLookups, 7);
+    assert.equal(sessionLookups, 0, "requests without a bearer token must not query the session store");
 
     const invalidTokenResponse = await fetch(base + "/api/auth/me", {
       headers: { authorization: "Bearer invalid-session-token" }
     });
     assert.equal(invalidTokenResponse.status, 401);
     assert.deepEqual(await invalidTokenResponse.json(), { error: "Session expired or invalid" });
+    assert.equal(sessionLookups, 1, "an invalid bearer token must be checked against the session store");
   }, pool);
 });
 
