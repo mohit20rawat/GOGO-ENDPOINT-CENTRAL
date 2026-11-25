@@ -50,7 +50,7 @@ internal static class Program
         }
 
         var builder = Host.CreateApplicationBuilder(args);
-        builder.Services.AddWindowsService(options => options.ServiceName = "GOGO Endpoint Central Agent");
+        builder.Services.AddWindowsService(options => options.ServiceName = "GogoEndpointCentralAgent");
         builder.Services.AddHostedService<AgentWorker>();
         await builder.Build().RunAsync();
         return 0;
