@@ -50,9 +50,21 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 New-Item -ItemType Directory -Path $stateDirectory -Force | Out-Null
-& icacls.exe $stateDirectory /grant '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' | Out-Null
+
+# Enrollment state contains a machine-DPAPI-protected bearer token. DPAPI is not an
+# access-control boundary, so remove inherited and stale explicit ACLs before granting
+# access only to SYSTEM, local administrators, and this service's unique SID.
+& icacls.exe $stateDirectory /reset /T /C | Out-Null
 if ($LASTEXITCODE -ne 0) {
-    throw "Failed to secure state directory ACLs."
+    throw "Failed to reset state directory ACLs."
+}
+& icacls.exe $stateDirectory /inheritance:r /T /C | Out-Null
+if ($LASTEXITCODE -ne 0) {
+    throw "Failed to remove inherited state directory ACLs."
+}
+& icacls.exe $stateDirectory /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' /T /C | Out-Null
+if ($LASTEXITCODE -ne 0) {
+    throw "Failed to apply restricted state directory ACLs."
 }
 
 $stateFilesExist = (Test-Path -LiteralPath (Join-Path $stateDirectory "config.json") -PathType Leaf) -and
@@ -79,7 +91,7 @@ if ($LASTEXITCODE -ne 0) {
     throw "Failed to enable service SID."
 }
 
-& icacls.exe $stateDirectory /grant 'NT SERVICE\GogoEndpointCentralAgent:(OI)(CI)M' | Out-Null
+& icacls.exe $stateDirectory /grant 'NT SERVICE\GogoEndpointCentralAgent:(OI)(CI)M' /T /C | Out-Null
 if ($LASTEXITCODE -ne 0) {
     throw "Failed to grant service-SID access to the state directory."
 }
