@@ -37,7 +37,15 @@ Do not set bootstrap credentials to example values. Treat the bootstrap password
 
 The current Render service may still be configured for the earlier MVP branch. Do not assume the feature branch is live. Review and merge the draft pull request only after CI passes, then configure Render to deploy the intended branch. Avoid manually deploying an unreviewed branch.
 
-## 5. Verify after deployment
+## 5. Authentication and rate-limit notes
+
+- Sign-in attempts are limited to 10 per 15-minute window per client IP.
+- Enrollment attempts are limited to 10 per 15-minute window; heartbeat and token rotation share a 120-request-per-minute limiter.
+- Administrative user creation and enrollment-token issuance share a limit of 20 mutations per 15-minute window per client IP.
+- Rate limits currently use the process-local in-memory store. They are a useful single-instance guard, not a distributed control; before scaling to multiple application instances, configure a shared rate-limit store so limits cannot be bypassed by spreading requests across instances.
+- The application trusts one reverse-proxy hop for client IP resolution, matching the current Render deployment topology. Revalidate this setting if the proxy topology changes.
+
+## 6. Verify after deployment
 
 1. Open `/health`; expect HTTP 200 and `{"status":"ok","service":"gogo-endpoint-central"}`.
 2. Open `/api/ready`; expect `mode: "database"`, `persistence: "postgresql"`, and `authRequired: true`.
