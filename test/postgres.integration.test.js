@@ -3,10 +3,65 @@ const assert = require("node:assert/strict");
 const { Pool } = require("pg");
 const bcrypt = require("bcryptjs");
 const crypto = require("node:crypto");
-const { createApp, initializeDatabase } = require("../app");
+const { createApp, initializeDatabase, reconcileOfflineAlerts } = require("../app");
 
-const databaseUrl = process.env.POSTGRES_TEST_DATABASE_URL;
-const enabled = process.env.RUN_POSTGRES_INTEGRATION === "1" && Boolean(databaseUrl);
+function getIntegrationDatabaseUrl(env = process.env) {
+  if (env.RUN_POSTGRES_INTEGRATION !== "1") return null;
+  const databaseUrl = env.POSTGRES_TEST_DATABASE_URL;
+  if (!databaseUrl) {
+    throw new Error("RUN_POSTGRES_INTEGRATION=1 requires POSTGRES_TEST_DATABASE_URL.");
+  }
+
+  let parsed;
+  try {
+    parsed = new URL(databaseUrl);
+  } catch (_error) {
+    throw new Error("POSTGRES_TEST_DATABASE_URL must be a valid PostgreSQL URL.");
+  }
+  if (!["postgres:", "postgresql:"].includes(parsed.protocol)) {
+    throw new Error("POSTGRES_TEST_DATABASE_URL must use postgres:// or postgresql://.");
+  }
+  if (!["localhost", "127.0.0.1"].includes(parsed.hostname.toLowerCase())) {
+    throw new Error("PostgreSQL integration tests only allow localhost or 127.0.0.1; hosted Render/Neon databases are forbidden.");
+  }
+  const databaseName = decodeURIComponent(parsed.pathname.slice(1));
+  if (databaseName !== "gogo_test") {
+    throw new Error("PostgreSQL integration tests only allow the dedicated gogo_test database.");
+  }
+  return databaseUrl;
+}
+
+const databaseUrl = getIntegrationDatabaseUrl();
+const enabled = Boolean(databaseUrl);
+
+test("PostgreSQL integration database guard rejects hosted and non-test targets", () => {
+  const local = "postgres://postgres:postgres@localhost:5432/gogo_test";
+  assert.equal(getIntegrationDatabaseUrl({
+    RUN_POSTGRES_INTEGRATION: "1",
+    POSTGRES_TEST_DATABASE_URL: local
+  }), local);
+  assert.equal(getIntegrationDatabaseUrl({
+    RUN_POSTGRES_INTEGRATION: "1",
+    POSTGRES_TEST_DATABASE_URL: "postgres://postgres:postgres@127.0.0.1:5432/gogo_test"
+  }), "postgres://postgres:postgres@127.0.0.1:5432/gogo_test");
+  assert.throws(() => getIntegrationDatabaseUrl({
+    RUN_POSTGRES_INTEGRATION: "1",
+    POSTGRES_TEST_DATABASE_URL: "postgres://user:secret@ep-gogo.neon.tech/gogo_test?sslmode=require"
+  }), /hosted Render\/Neon databases are forbidden/);
+  assert.throws(() => getIntegrationDatabaseUrl({
+    RUN_POSTGRES_INTEGRATION: "1",
+    POSTGRES_TEST_DATABASE_URL: "postgres://user:secret@gogo-db.onrender.com/gogo_test"
+  }), /hosted Render\/Neon databases are forbidden/);
+  assert.throws(() => getIntegrationDatabaseUrl({
+    RUN_POSTGRES_INTEGRATION: "1",
+    POSTGRES_TEST_DATABASE_URL: "postgres://postgres:postgres@localhost:5432/postgres"
+  }), /dedicated gogo_test database/);
+  assert.throws(() => getIntegrationDatabaseUrl({ RUN_POSTGRES_INTEGRATION: "1" }), /requires POSTGRES_TEST_DATABASE_URL/);
+  assert.equal(getIntegrationDatabaseUrl({
+    RUN_POSTGRES_INTEGRATION: "0",
+    POSTGRES_TEST_DATABASE_URL: "postgres://user:secret@ep-gogo.neon.tech/gogo_test"
+  }), null);
+});
 
 test("PostgreSQL enrollment, heartbeat, token rotation, revocation, and audit flow", { skip: !enabled }, async () => {
   // Use a dedicated, disposable PostgreSQL database. Never point this test at production.
@@ -28,7 +83,7 @@ test("PostgreSQL enrollment, heartbeat, token rotation, revocation, and audit fl
       initializeDatabase(pool, bootstrapEnv),
       initializeDatabase(pool, bootstrapEnv)
     ]);
-    const migration = await pool.query("SELECT version FROM schema_migrations WHERE version = $1", ["001_initial_schema"]);
+    const migration = await pool.query("SELECT version FROM schema_migrations WHERE version = $1", ["002_offline_alerts"]);
     assert.equal(migration.rowCount, 1);
     server = createApp({ pool }).listen(0);
     await new Promise((resolve, reject) => {
@@ -42,7 +97,7 @@ test("PostgreSQL enrollment, heartbeat, token rotation, revocation, and audit fl
     assert.equal(readinessResponse.status, 200);
     const readiness = await readinessResponse.json();
     assert.equal(readiness.ready, true);
-    assert.equal(readiness.schemaVersion, "001_initial_schema");
+    assert.equal(readiness.schemaVersion, "002_offline_alerts");
 
     const loginResponse = await fetch(base + "/api/auth/login", {
       method: "POST", headers: json,
@@ -185,6 +240,78 @@ test("PostgreSQL enrollment, heartbeat, token rotation, revocation, and audit fl
     assert.equal(inventoryDevice.agentVersion, "integration-test");
     assert.equal(inventoryDevice.hardwareInventory.cpuModel, "Test CPU");
     assert.ok(inventoryDevice.lastSeen);
+    assert.equal(inventoryDevice.status, "online");
+
+    const summaryBeforeOfflineResponse = await fetch(base + "/api/summary", {
+      headers: adminHeaders
+    });
+    assert.equal(summaryBeforeOfflineResponse.status, 200);
+    const summaryBeforeOffline = await summaryBeforeOfflineResponse.json();
+
+    const agedDevice = await pool.query(
+      "UPDATE devices SET updated_at = NOW() - INTERVAL '6 minutes' WHERE id = $1 RETURNING id",
+      [device.deviceId]
+    );
+    assert.equal(agedDevice.rowCount, 1);
+
+    const offlineInventoryResponse = await fetch(base + "/api/devices?q=INTEGRATION-WIN-01", {
+      headers: adminHeaders
+    });
+    assert.equal(offlineInventoryResponse.status, 200);
+    const offlineInventory = await offlineInventoryResponse.json();
+    const offlineDevice = offlineInventory.items.find(item => item.id === device.deviceId);
+    assert.equal(offlineDevice.status, "offline");
+
+    const offlineSummaryResponse = await fetch(base + "/api/summary", {
+      headers: adminHeaders
+    });
+    assert.equal(offlineSummaryResponse.status, 200);
+    const offlineSummary = await offlineSummaryResponse.json();
+    assert.equal(offlineSummary.offlineDevices, summaryBeforeOffline.offlineDevices + 1);
+    assert.equal(offlineSummary.onlineDevices, summaryBeforeOffline.onlineDevices - 1);
+
+    const recoveryHeartbeatResponse = await heartbeat(device.agentToken);
+    assert.equal(recoveryHeartbeatResponse.status, 200);
+
+    const recoveredInventoryResponse = await fetch(base + "/api/devices?q=INTEGRATION-WIN-01", {
+      headers: adminHeaders
+    });
+    assert.equal(recoveredInventoryResponse.status, 200);
+    const recoveredInventory = await recoveredInventoryResponse.json();
+    const recoveredDevice = recoveredInventory.items.find(item => item.id === device.deviceId);
+    assert.equal(recoveredDevice.status, "online");
+
+    const recoveredSummaryResponse = await fetch(base + "/api/summary", {
+      headers: adminHeaders
+    });
+    assert.equal(recoveredSummaryResponse.status, 200);
+    const recoveredSummary = await recoveredSummaryResponse.json();
+    assert.equal(recoveredSummary.offlineDevices, summaryBeforeOffline.offlineDevices);
+    assert.equal(recoveredSummary.onlineDevices, summaryBeforeOffline.onlineDevices);
+
+    // Stale heartbeats create one persistent alert per tenant and device, even after repeated scans.
+    await pool.query(
+      "UPDATE devices SET status='online',updated_at=NOW()-INTERVAL '6 minutes' WHERE id IN ($1,$2)",
+      [device.deviceId,isolatedDeviceId]
+    );
+    const firstScan = await reconcileOfflineAlerts(pool);
+    assert.ok(firstScan.some(alert => alert.device_id === device.deviceId));
+    assert.ok(firstScan.some(alert => alert.device_id === isolatedDeviceId));
+    const secondScan = await reconcileOfflineAlerts(pool);
+    assert.equal(secondScan.some(alert => alert.device_id === device.deviceId || alert.device_id === isolatedDeviceId),false);
+
+    const primaryAlerts = await (await fetch(base + "/api/alerts?status=active", { headers:adminHeaders })).json();
+    const isolatedAlerts = await (await fetch(base + "/api/alerts?status=active", { headers:isolatedHeaders })).json();
+    assert.deepEqual(primaryAlerts.items.map(alert => alert.deviceId).filter(id => id === isolatedDeviceId),[]);
+    assert.deepEqual(isolatedAlerts.items.map(alert => alert.deviceId).filter(id => id === device.deviceId),[]);
+    assert.ok(primaryAlerts.items.some(alert => alert.deviceId === device.deviceId && alert.status === "active"));
+    assert.ok(isolatedAlerts.items.some(alert => alert.deviceId === isolatedDeviceId && alert.status === "active"));
+
+    assert.equal((await heartbeat(device.agentToken)).status,200);
+    const recoveredAlerts = await (await fetch(base + "/api/alerts?status=resolved", { headers:adminHeaders })).json();
+    assert.ok(recoveredAlerts.items.some(alert => alert.deviceId === device.deviceId && alert.status === "resolved" && alert.resolvedAt));
+    const isolatedStillActive = await (await fetch(base + "/api/alerts?status=active", { headers:isolatedHeaders })).json();
+    assert.ok(isolatedStillActive.items.some(alert => alert.deviceId === isolatedDeviceId));
 
     const rotateResponse = await fetch(base + "/api/agent/rotate-token", {
       method: "POST", headers: { authorization: "Bearer " + device.agentToken }
