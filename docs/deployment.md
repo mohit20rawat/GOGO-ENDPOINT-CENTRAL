@@ -27,6 +27,9 @@ Do not set bootstrap credentials to example values. Treat the bootstrap password
 
 - Before applying a schema migration to any database containing important data, take a backup and verify that it can be restored to a separate database.
 - Test migrations first against the disposable PostgreSQL database used by CI or another isolated test database.
+- CI runs `scripts/postgres-restore-drill.sh` after PostgreSQL integration tests. The script is deliberately restricted to a loopback host and a source database named exactly `gogo_test`; it creates a separate `gogo_restore_test` database, restores a custom-format dump, verifies the migration ledger and required tables, then removes the restore database.
+- The drill refuses to overwrite an existing restore database and never accepts a remote/managed database host. Do not weaken these guards to test against Render or a managed database.
+- To run locally, use a disposable local PostgreSQL instance with `pg_dump`, `pg_restore`, `psql`, `createdb`, and `dropdb` installed. Set `POSTGRES_TEST_DATABASE_URL` to a local URL whose database name is exactly `gogo_test`, run the integration tests first, then run `bash scripts/postgres-restore-drill.sh`. The temporary dump is deleted automatically. Set `KEEP_RESTORE_DB=1` only when you intentionally want to inspect the restored disposable database.
 - Add a new numbered migration for every schema change; do not edit a migration that may already have run. The migration runner applies pending migrations under an advisory lock and records versions transactionally.
 - Migrations are forward-only. Rolling back application code does not automatically reverse schema changes; restoring a verified backup may be required.
 
@@ -46,5 +49,5 @@ The current Render service may still be configured for the earlier MVP branch. D
 
 - The app is not production-hardened. Obtain a security review before real organizational use.
 - PostgreSQL TLS certificate verification is enabled by default. Validate the chosen provider's certificate chain and connectivity before handling sensitive data. Do not set `DATABASE_SSL=disable` in production.
-- Backups, restore drills, password reset, MFA/SSO, distributed rate limiting, tenant onboarding, agent packaging/signing, secure OS token storage, and device-management actions remain unfinished.
+- Automated backup/restore verification now runs in CI against a local disposable PostgreSQL database. Scheduled backups, off-site retention, provider-specific backup verification, disaster-recovery objectives, password reset, MFA/SSO, distributed rate limiting, tenant onboarding, agent packaging/signing, secure OS token storage, and device-management actions remain unfinished.
 - PostgreSQL integration tests run in CI against an isolated disposable database. A successful CI run does not prove a managed provider or Render environment has been configured.

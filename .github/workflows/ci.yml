@@ -44,6 +44,14 @@ jobs:
           RUN_POSTGRES_INTEGRATION: "1"
           POSTGRES_TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/gogo_test
         run: npm test
+      - name: Install PostgreSQL backup/restore tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes postgresql-client
+      - name: Run guarded PostgreSQL backup/restore drill
+        env:
+          POSTGRES_TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/gogo_test
+        run: bash scripts/postgres-restore-drill.sh
 
   windows-agent:
     name: Windows agent PowerShell validation
