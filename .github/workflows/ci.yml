@@ -93,6 +93,9 @@ jobs:
         run: dotnet build agent/windows/service/GogoEndpointCentral.Service.csproj --configuration Release
       - name: Publish Windows x64 service
         run: dotnet publish agent/windows/service/GogoEndpointCentral.Service.csproj --configuration Release --runtime win-x64 --self-contained false --output agent/windows/service/publish
+      - name: Exercise Windows SCM, LocalService, service SID, DPAPI and shutdown
+        shell: pwsh
+        run: ./agent/windows/test-agent-service-ci.ps1
       - name: Assemble experimental test package
         shell: pwsh
         run: |
